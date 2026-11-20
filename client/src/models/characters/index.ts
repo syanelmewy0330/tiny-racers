@@ -11,6 +11,9 @@ const builders: Record<string, () => CharacterRig> = {
   peanut: buildPeanut,
 };
 
+/** Swap in a different builder (used to try models made in Blender). */
+export function setCharacterBuilder(id: string, b: () => CharacterRig) { builders[id] = b; }
+
 /** Build a fresh character model by id (falls back to Bubbles). */
 export function buildCharacter(id: string): CharacterRig {
   return (builders[id] ?? buildBubbles)();

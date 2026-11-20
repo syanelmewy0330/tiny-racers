@@ -7,6 +7,13 @@ import type { ColyseusSession } from './net/ColyseusSession';
 
 async function boot() {
   await RAPIER.init();               // loads the physics engine (WebAssembly)
+  // ?glb=bubbles tries the Blender-made Bubbles instead of the built-in one
+  if (new URLSearchParams(location.search).get('glb') === 'bubbles') {
+    const [{ loadGlbCharacter, BUBBLES_V1 }, { setCharacterBuilder }] = await Promise.all([import('./models/characters/glbCharacter'), import('./models/characters')]);
+    setCharacterBuilder('bubbles', await loadGlbCharacter(BUBBLES_V1));
+    const [{ loadGlbKart, ZOOMIE_V1 }, { setKartBuilder }] = await Promise.all([import('./models/karts/glbKart'), import('./models/karts')]);
+    setKartBuilder('zoomie', await loadGlbKart(ZOOMIE_V1));
+  }
   const ui = document.getElementById('ui')!;
   const game = new Game(document.getElementById('scene') as HTMLCanvasElement, ui);
 
