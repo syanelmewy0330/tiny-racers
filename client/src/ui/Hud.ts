@@ -44,8 +44,9 @@ const store = {
 export class Hud {
   readonly root: HTMLElement;
   private results: HTMLElement;
+  private pauseEl: HTMLElement;
   onRestart?: () => void;
-  /** Practice results: back to the main menu (wired up by the menus milestone). */
+  /** Back to the main menu (results and pause menu). */
   onMenu?: () => void;
 
   private q = (s: string) => this.root.querySelector(s) as HTMLElement;
@@ -80,8 +81,9 @@ export class Hud {
         <span><b class="kc">Space</b></span><span>Drift, release to boost</span>
         <span><b class="kc">E</b></span><span>Use item</span>
         <span><b class="kc">R</b></span><span>Back on track</span>
-        <span><b class="kc">G</b></span><span>Graphics high / low</span>
+        <span><b class="kc">Esc</b></span><span>Pause menu</span>
         <span><b class="kc">H</b></span><span>Hide controls</span>
+        <div class="pad">Controller: stick steers, RT go, LT brake, RB drift, Y reset, Start pause</div>
       </div>
       <div class="rh-item empty" data-item><svg viewBox="0 0 100 100" data-icon aria-hidden="true"></svg><div class="key">E</div></div>
       <div class="rh-item-label" data-ilabel><span class="cap">NO ITEM</span></div>
@@ -110,7 +112,8 @@ export class Hud {
       <div class="rh-confetti" data-confetti></div>
     </div>`);
     this.results = el(`<div class="rr" hidden><div class="rr-card" data-rcard></div></div>`);
-    parent.append(this.root, this.results);
+    this.pauseEl = el(`<div class="rr rp" hidden role="dialog" aria-label="Paused"><div class="rr-card" data-pcard></div></div>`);
+    parent.append(this.root, this.results, this.pauseEl);
     for (const k of ['place', 'pn', 'pof', 'pbadge', 'lap', 'time', 'net', 'standings', 'help', 'hint', 'speedo', 'speed', 'boost', 'banner', 'btext', 'toast', 'big', 'finish', 'fplace', 'confetti', 'lines', 'item', 'ilabel'])
       this.els[k] = this.q(`[data-${k}]`);
     this.speedArc = this.root.querySelector('[data-arc]') as unknown as SVGPathElement;
@@ -130,8 +133,54 @@ export class Hud {
     this.applyHelp();
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyH' || this.root.hidden || (e.target as HTMLElement)?.tagName === 'INPUT') return;
-      this.helpOpen = !this.helpOpen; store.set(HELP_KEY, this.helpOpen ? 'shown' : 'hidden'); this.applyHelp();
+      this.toggleHelp();
     });
+  }
+
+  /** Show or hide the controls guide, and remember the choice. */
+  toggleHelp(on = !this.helpOpen) { this.helpOpen = on; store.set(HELP_KEY, on ? 'shown' : 'hidden'); this.applyHelp(); }
+  get helpShown() { return this.helpOpen; }
+  /** Show the guide for a while without changing the saved choice (first races). */
+  peekHelp(on: boolean) { this.els.help.hidden = !(on || this.helpOpen); }
+
+  // ---------- pause menu ----------
+  get paused() { return !this.pauseEl.hidden; }
+
+  openPause(o: { online: boolean; graphics: string; finished: boolean }, a: { resume: () => void; restart?: () => void; graphics: () => void; leave: () => void }) {
+    const card = this.pauseEl.querySelector('[data-pcard]') as HTMLElement;
+    card.textContent = '';
+    const h = document.createElement('div'); h.className = 'rr-title shout'; h.textContent = 'PAUSED'; card.append(h);
+    if (o.online) { const n = document.createElement('p'); n.className = 'rr-note'; n.textContent = 'Online races keep going while this menu is open.'; card.append(n); }
+    const list = document.createElement('div'); list.className = 'rp-list'; card.append(list);
+    const add = (label: string, kind: 'go' | 'alt' | 'warn', act: () => void, hint = '') => {
+      const b = document.createElement('button'); b.className = `rr-btn ${kind}`; b.type = 'button';
+      b.innerHTML = `<span>${label}</span>${hint ? `<small>${hint}</small>` : ''}`;
+      b.onclick = act; list.append(b); return b;
+    };
+    add('RESUME', 'go', a.resume, 'Esc');
+    if (a.restart && !o.online) add('RESTART RACE', 'alt', a.restart);
+    const help = add(this.helpOpen ? 'HIDE CONTROLS' : 'SHOW CONTROLS', 'alt', () => { this.toggleHelp(); help.querySelector('span')!.textContent = this.helpOpen ? 'HIDE CONTROLS' : 'SHOW CONTROLS'; }, 'H');
+    const gfx = add(`GRAPHICS: ${o.graphics.toUpperCase()}`, 'alt', () => { a.graphics(); }, 'G');
+    gfx.dataset.gfx = '';
+    add(o.online ? 'LEAVE ROOM' : 'QUIT TO MENU', 'warn', a.leave);
+    this.pauseEl.hidden = false;
+    (list.querySelector('button') as HTMLElement).focus();
+  }
+  setPauseGraphics(q: string) { const b = this.pauseEl.querySelector('[data-gfx] span'); if (b) b.textContent = `GRAPHICS: ${q.toUpperCase()}`; }
+  closePause() { this.pauseEl.hidden = true; }
+
+  /** Gamepad / arrow navigation for whichever menu is open (pause or results). */
+  menuKey(k: 'up' | 'down' | 'ok' | 'back') {
+    const box = !this.pauseEl.hidden ? this.pauseEl : !this.results.hidden ? this.results : null;
+    if (!box) return false;
+    const btns = [...box.querySelectorAll('button')] as HTMLButtonElement[];
+    if (!btns.length) return false;
+    let i = btns.indexOf(document.activeElement as HTMLButtonElement);
+    if (k === 'ok') { (btns[i] ?? btns[0]).click(); return true; }
+    if (k === 'back') return false;
+    i = i < 0 ? 0 : (i + (k === 'down' ? 1 : -1) + btns.length) % btns.length;
+    btns[i].focus();
+    return true;
   }
 
   private applyHelp() { this.els.help.hidden = !this.helpOpen; this.els.hint.classList.toggle('on', this.helpOpen); }
@@ -333,7 +382,7 @@ export class Hud {
 
   showResults(total: number, laps: number[]) {
     this.renderResults('FINISHED!', formatTime(total), laps.map((t, i) => ({ pos: i + 1, name: `Lap ${i + 1}`, time: formatTime(t), plain: true })), '',
-      [{ label: 'RACE AGAIN', kind: 'go', act: () => this.onRestart?.() }]);
+      [{ label: 'RACE AGAIN', kind: 'go', act: () => this.onRestart?.() }, { label: 'MAIN MENU', kind: 'alt', act: () => this.onMenu?.() }]);
   }
   hideResults() { this.results.hidden = true; }
 
