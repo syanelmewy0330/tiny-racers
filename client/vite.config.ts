@@ -9,5 +9,5 @@ export default defineConfig({
   // Relative paths so the built game also works from GitHub Pages or any folder.
   base: './',
   // Rapier's physics engine is bundled in; it is big but loads once.
-  build: { chunkSizeWarningLimit: 3000 },
+  build: { chunkSizeWarningLimit: 6000 },
 });
