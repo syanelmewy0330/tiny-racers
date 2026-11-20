@@ -69,6 +69,9 @@ export class RemoteKarts {
     }
   }
 
+  /** Where everyone else is right now (for the minimap). */
+  positions() { return [...this.karts.values()].map((r) => ({ x: r.x, z: r.z, character: r.model.ch.id })); }
+
   clear() { for (const [id, r] of this.karts) this.remove(id, r); }
 
   private remove(id: string, r: Remote) {
