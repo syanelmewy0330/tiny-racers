@@ -16,6 +16,7 @@ async function boot() {
     game.attachRoom(s);
     closeLobby = showLobby(ui, s, () => game.leaveRoom());
   };
+  game.onMenu = () => title();
   game.onRaceStarted = () => { closeLobby?.(); closeLobby = null; };
   game.onLeftRoom = (reason) => { closeLobby?.(); closeLobby = null; title(reason ?? ''); };
   title();

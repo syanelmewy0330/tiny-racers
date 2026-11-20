@@ -268,3 +268,14 @@ details[open] { display: flex; flex-direction: column; gap: 6px; }
 @keyframes rr-in { from { opacity: 0; transform: translateY(calc(var(--u) * 40)) scale(.92); } }
 @keyframes rr-row { from { opacity: 0; transform: skewX(-8deg) translateX(calc(var(--u) * -40)); } }
 @media (prefers-reduced-motion: reduce) { .rr-card, .rr-rows li { animation: none; } }
+
+/* ----- pause menu (design board v3.0) ----- */
+.rp { z-index: 5; }
+.rp .rr-card { width: min(calc(var(--u) * 460), 100%); }
+.rp-list { display: flex; flex-direction: column; gap: calc(var(--u) * 12); margin-top: calc(var(--u) * 22); }
+.rp .rr-btn { display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left; }
+.rp .rr-btn small { font-family: var(--ui3); font-style: normal; font-weight: 800; font-size: calc(var(--u) * 13); letter-spacing: .08em; opacity: .6; transform: skewX(10deg); }
+.rp .rr-btn span { transform: skewX(10deg); display: inline-block; }
+.rr-btn.warn { background: var(--red); color: var(--off); box-shadow: 0 calc(var(--u) * 5) 0 #9e2e2e; }
+.rr-btn:focus-visible, .rr-btn:focus { outline: calc(var(--u) * 3) solid var(--off); outline-offset: calc(var(--u) * 4); }
+.rh-help .pad { grid-column: 1 / -1; font-size: calc(var(--u) * 11); color: rgba(242, 242, 240, .6); font-weight: 600; margin-top: calc(var(--u) * 2); }

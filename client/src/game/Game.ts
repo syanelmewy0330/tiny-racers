@@ -48,6 +48,9 @@ export class Game {
   private practiceCharacter = 'bubbles';
   /** Called when an online room closes unexpectedly, or the player leaves it. */
   onLeftRoom?: (reason: string | null) => void;
+  /** Called when the player quits a practice race to the main menu. */
+  onMenu?: () => void;
+  private peekUntil = -1;
   private wentGo = false;
   /** Bumped every time a race starts, so delayed results never show over a newer race. */
   private raceSerial = 0;
@@ -79,6 +82,10 @@ export class Game {
 
     this.hud = new Hud(uiRoot);
     this.hud.onRestart = () => this.startRace();
+    this.hud.onMenu = () => this.toMenu();
+    this.input.onPad = (on) => this.hud.say(on ? 'Controller connected' : 'Controller unplugged', 1.6);
+    // switching to another tab pauses a practice race
+    document.addEventListener('visibilitychange', () => { if (document.hidden && this.mode === 'race' && !this.online && !this.hud.paused) this.openPause(); });
     this.hud.setTrack(this.track.path.pts);
     this.kart.onBoost = (k) => { this.model.react(); this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!'); };
     // new laps are announced by the HUD's lap banner
@@ -94,8 +101,8 @@ export class Game {
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyG' || (e.target as HTMLElement)?.tagName === 'INPUT') return;
-      const q = this.look.toggle(); this.resize();
-      if (this.mode === 'race') this.hud.say(q === 'high' ? 'Graphics: High' : 'Graphics: Low', 1.2);
+      const q = this.look.toggle(); this.resize(); this.hud.setPauseGraphics(q);
+      if (this.mode === 'race' && !this.hud.paused) this.hud.say(q === 'high' ? 'Graphics: High' : 'Graphics: Low', 1.2);
     });
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
@@ -108,10 +115,38 @@ export class Game {
     this.setCharacter(character);
     this.model.setMood('race');
     this.mode = 'race'; this.raceSerial++;
-    this.hud.show(true); this.hud.hideResults();
+    this.hud.show(true); this.hud.hideResults(); this.hud.closePause();
     this.placeOnGrid(0);
     this.wentGo = false;
     this.rig.snap();
+    this.firstRaceHelp();
+  }
+
+  /** New players see the controls guide during their first two races, until a few seconds after GO. */
+  private firstRaceHelp() {
+    let n = 0; try { n = Number(localStorage.getItem('tr-races') ?? 0) || 0; localStorage.setItem('tr-races', String(n + 1)); } catch { /* private mode */ }
+    this.peekUntil = n < 2 ? Infinity : -1;
+    this.hud.peekHelp(n < 2);
+  }
+
+  // ---------- pause menu ----------
+  private openPause() {
+    if (this.mode !== 'race' || this.hud.paused) return;
+    this.hud.openPause({ online: !!this.online, graphics: this.look.quality, finished: this.race.phase === 'finished' }, {
+      resume: () => this.hud.closePause(),
+      restart: () => this.startRace(),
+      graphics: () => { const q = this.look.toggle(); this.resize(); this.hud.setPauseGraphics(q); },
+      leave: () => this.toMenu(),
+    });
+  }
+
+  /** Quit the race (or leave the room) and go back to the main menu. */
+  toMenu() {
+    this.hud.closePause(); this.hud.hideResults();
+    this.raceSerial++;
+    if (this.online) { this.leaveRoom(); return; }
+    this.mode = 'title'; this.hud.show(false);
+    this.onMenu?.();
   }
 
   /** Online: hook the game up to a race room. The server decides when races start. */
@@ -133,6 +168,8 @@ export class Game {
         this.race.countdown = d.countdown + 30;   // the server says GO, not our own timer
         this.countdownEndsAt = this.time + d.countdown;
         this.wentGo = false; this.rig.snap();
+        this.hud.closePause();
+        this.firstRaceHelp();
         this.onRaceStarted?.();
       },
       go: () => { this.race.phase = 'racing'; this.race.countdown = 0; },
@@ -164,7 +201,7 @@ export class Game {
     this.online.leave();
     this.online = null; this.session = new OfflineSession(); this.meView = null;
     this.remotes.clear();
-    this.mode = 'title'; this.hud.show(false);
+    this.mode = 'title'; this.hud.show(false); this.hud.closePause();
     this.onLeftRoom?.(reason);
   }
 
@@ -202,8 +239,9 @@ export class Game {
   }
 
   private physicsStep() {
-    const input = this.input.read();
-    if (this.mode === 'race' && this.input.takeRespawn() && this.race.phase !== 'finished') this.respawn();
+    const paused = this.hud.paused;
+    const input = paused ? { throttle: false, brake: false, steer: 0, drift: false } : this.input.read();
+    if (this.mode === 'race' && this.input.takeRespawn() && !paused && this.race.phase !== 'finished') this.respawn();
 
     const p = this.kart.body.translation();
     const { distFromCentre } = this.race.update(STEP, p.x, p.z);
@@ -226,8 +264,16 @@ export class Game {
   private frame() {
     const dt = Math.min(this.clock.getDelta(), 0.1);
     this.time += dt;
-    this.acc += dt;
+    // pause menu: Esc / P / Start; gamepad moves through menus
+    this.input.poll();
+    if (this.input.takePause() && this.mode === 'race') { if (this.hud.paused) this.hud.closePause(); else this.openPause(); }
+    for (const k of this.input.takeMenu()) if (!this.hud.menuKey(k) && k === 'back' && this.hud.paused) this.hud.closePause();
+    // practice freezes while paused; online races carry on
+    const frozen = this.hud.paused && !this.online;
+    if (frozen) this.acc = 0; else this.acc += dt;
     while (this.acc >= STEP) { this.physicsStep(); this.acc -= STEP; }
+    if (this.peekUntil === Infinity && this.wentGo) this.peekUntil = this.time + 5;
+    if (this.peekUntil > 0 && this.time > this.peekUntil) { this.peekUntil = -1; this.hud.peekHelp(false); }
 
     // visuals follow physics
     const p = this.kart.body.translation();
