@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { nearest, yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
+import { SUN_DIR, HAZE } from './Look';
 
 /** Sky, lights, ground and scenery around the track. */
 export class Environment {
@@ -9,11 +10,12 @@ export class Environment {
   private clouds = new THREE.Group();
 
   constructor(scene: THREE.Scene, world: RAPIER.World, track: Track) {
-    scene.background = new THREE.Color(0x9fdcff);
-    scene.fog = new THREE.Fog(0xbfe8ff, 120, 380);
+    scene.background = HAZE.clone();
+    scene.fog = new THREE.Fog(HAZE, 220, 900);
 
-    scene.add(new THREE.HemisphereLight(0xdff4ff, 0x6fae4a, 1.6));
-    this.sun = new THREE.DirectionalLight(0xfff1d6, 2.4);
+    // golden-hour light: warm low sun, cool sky fill, warm bounce from the ground
+    scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6f6148, 0.95));
+    this.sun = new THREE.DirectionalLight(0xffd9a6, 2.6);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 160;
@@ -21,7 +23,7 @@ export class Environment {
     scene.add(this.sun, this.sun.target);
 
     // Ground: big grassy field, plus a physics floor under everything.
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshStandardMaterial({ color: 0x8fd16a, roughness: 1 }));
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshStandardMaterial({ color: 0x74b552, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2; ground.position.set(90, 0, 45); ground.receiveShadow = true;
     scene.add(ground);
     world.createCollider(RAPIER.ColliderDesc.cuboid(800, 1, 800).setTranslation(90, -1, 45).setFriction(0));
@@ -68,7 +70,7 @@ export class Environment {
     }
 
     // Distant rolling hills
-    const hillMat = new THREE.MeshStandardMaterial({ color: 0x7bc96f, roughness: 1 });
+    const hillMat = new THREE.MeshStandardMaterial({ color: 0x5f9f58, roughness: 1 });
     for (let k = 0; k < 14; k++) {
       const a = (k / 14) * Math.PI * 2, r = 230 + rnd() * 60;
       const hill = new THREE.Mesh(new THREE.SphereGeometry(40 + rnd() * 30, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), hillMat);
@@ -94,7 +96,7 @@ export class Environment {
 
   /** Keep the sun's shadow box centred on the kart. */
   follow(target: THREE.Vector3, time: number) {
-    this.sun.position.set(target.x + 30, target.y + 60, target.z + 20);
+    this.sun.position.copy(target).addScaledVector(SUN_DIR, 80);
     this.sun.target.position.copy(target);
     this.clouds.position.x = Math.sin(time * 0.02) * 20;
   }

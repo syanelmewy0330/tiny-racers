@@ -17,6 +17,7 @@ import { Hud } from '../ui/Hud';
 import { OfflineSession, type RaceSession } from '../net/Network';
 import type { ColyseusSession } from '../net/ColyseusSession';
 import { RemoteKarts } from './RemoteKarts';
+import { Look } from './Look';
 
 const STEP = 1 / PHYSICS_HZ;
 const KART_RADIUS = 0.75;
@@ -25,7 +26,7 @@ const KART_RADIUS = 0.75;
 export class Game {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(70, 1, 0.1, 900);
+  private camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1600);
   private world = new RAPIER.World({ x: 0, y: -25, z: 0 });
   private input = new Input();
   private track: Track;
@@ -52,6 +53,7 @@ export class Game {
   private raceSerial = 0;
   private sendTimer = 0;
   readonly hud: Hud;
+  private look!: Look;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -59,12 +61,13 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 0.95;
 
     toyEnvironment(this.renderer, this.scene, 0.35);
     this.track = new Track(MEADOW_LOOP, this.world);
     this.scene.add(this.track.group);
     this.env = new Environment(this.scene, this.world, this.track);
+    this.look = new Look(this.renderer, this.scene, this.camera);
 
     const ch = characterById('bubbles');
     this.kart = new KartController(this.world, ch);
@@ -89,6 +92,11 @@ export class Game {
 
     this.placeOnGrid(0);
     window.addEventListener('resize', () => this.resize());
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyG' || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const q = this.look.toggle(); this.resize();
+      if (this.mode === 'race') this.hud.say(q === 'high' ? 'Graphics: High' : 'Graphics: Low', 1.2);
+    });
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
   }
@@ -190,6 +198,7 @@ export class Game {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.look?.resize();
   }
 
   private physicsStep() {
@@ -257,7 +266,7 @@ export class Game {
         if (!this.online || this.online.connection === 'online') this.session.sendSnapshot(this.kart.snapshot());
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    this.look.render(dt, this.mode === 'race' && this.kart.boosting ? 1 : 0);
   }
 }
 

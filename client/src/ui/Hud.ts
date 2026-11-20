@@ -80,6 +80,7 @@ export class Hud {
         <span><b class="kc">Space</b></span><span>Drift, release to boost</span>
         <span><b class="kc">E</b></span><span>Use item</span>
         <span><b class="kc">R</b></span><span>Back on track</span>
+        <span><b class="kc">G</b></span><span>Graphics high / low</span>
         <span><b class="kc">H</b></span><span>Hide controls</span>
       </div>
       <div class="rh-item empty" data-item><svg viewBox="0 0 100 100" data-icon aria-hidden="true"></svg><div class="key">E</div></div>
