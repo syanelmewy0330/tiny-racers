@@ -72,7 +72,7 @@ export class RemoteKarts {
   clear() { for (const [id, r] of this.karts) this.remove(id, r); }
 
   private remove(id: string, r: Remote) {
-    this.scene.remove(r.model.root);
+    this.scene.remove(r.model.root); r.model.dispose();
     this.world.removeRigidBody(r.body);
     this.karts.delete(id);
   }

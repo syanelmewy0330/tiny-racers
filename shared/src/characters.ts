@@ -3,6 +3,9 @@ export interface CharacterDef {
   id: 'bubbles' | 'taco' | 'nimbus' | 'peanut';
   name: string;
   title: string;
+  /** One or two sentences for the character select screen. */
+  description: string;
+  species: string;
   ability: string;
   abilityText: string;
   color: number;      // main kart colour
@@ -13,27 +16,31 @@ export interface CharacterDef {
 
 export const CHARACTERS: CharacterDef[] = [
   {
-    id: 'bubbles', name: 'Bubbles', title: 'The Overexcited Rookie',
+    id: 'bubbles', name: 'Bubbles', title: 'The Overexcited Rookie', species: 'Gray and white cat',
+    description: 'Energetic, reckless and thrilled about absolutely everything. Bubbles has never once braked on purpose.',
     ability: 'Turbo Sneeze', abilityText: 'A huge sneeze that blasts you forward.',
-    color: 0xf2b632, accent: 0x3a3550, fur: 0xb9b9c4,
+    color: 0xffc84a, accent: 0x3b2e55, fur: 0xa9a7b8,
     stats: { speed: 3, acceleration: 5, handling: 3 },
   },
   {
-    id: 'taco', name: 'Taco', title: 'The Snack Strategist',
+    id: 'taco', name: 'Taco', title: 'The Snack Strategist', species: 'Pug',
+    description: 'Lazy and always hungry, until the countdown starts. Then Taco is unexpectedly, terrifyingly competitive.',
     ability: 'Taco Trap', abilityText: 'Drops a slippery taco behind you.',
-    color: 0xe2534a, accent: 0x2f2b3d, fur: 0xd9b48a,
+    color: 0xff5c8a, accent: 0x3b2e55, fur: 0xe8c59a,
     stats: { speed: 5, acceleration: 2, handling: 3 },
   },
   {
-    id: 'nimbus', name: 'Nimbus', title: 'The Overthinker',
+    id: 'nimbus', name: 'Nimbus', title: 'The Overthinker', species: 'Fluffy sheep',
+    description: 'Brilliant, anxious and analytical. Nimbus has calculated the perfect racing line, and is worried about it.',
     ability: 'Predictive Drift', abilityText: 'Drifts charge twice as fast for a while.',
-    color: 0xa58cf0, accent: 0xffffff, fur: 0xf4efe6,
+    color: 0x6ccff6, accent: 0x8b7cff, fur: 0xfbf7f0,
     stats: { speed: 3, acceleration: 3, handling: 5 },
   },
   {
-    id: 'peanut', name: 'Peanut', title: 'The Chaos Agent',
+    id: 'peanut', name: 'Peanut', title: 'The Chaos Agent', species: 'Red panda',
+    description: 'Mischievous and completely unpredictable. Nobody knows what Peanut will do next, including Peanut.',
     ability: 'Chaos Bomb', abilityText: 'Throws a bomb that spins out racers ahead.',
-    color: 0x3fb5a3, accent: 0xe0773a, fur: 0xd2653a,
+    color: 0xff9a3c, accent: 0x2fb5a3, fur: 0xe06a2c,
     stats: { speed: 4, acceleration: 4, handling: 2 },
   },
 ];

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tiny Racers model viewer</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@600;800&display=swap" />
+  <style>
+    html, body { margin: 0; height: 100%; background: linear-gradient(#fff5fb, #e9e4ff); font-family: Nunito, sans-serif; }
+    canvas { width: 100vw; height: 100vh; display: block; }
+    nav { position: fixed; top: 10px; left: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+    nav a { background: #fff; border: 2px solid #3b2e55; border-radius: 10px; padding: 4px 10px; color: #3b2e55; text-decoration: none; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <nav id="nav"></nav>
+  <script type="module" src="/src/dev/modelViewer.ts"></script>
+</body>
+</html>

@@ -1,10 +1,18 @@
 :root {
-  --ink: #2a1e3f;
-  --paper: #fffaf3;
+  /* Design bible palette */
+  --rose: #ff5c8a;
+  --yellow: #ffc84a;
+  --sky: #6ccff6;
+  --mint: #7de3a1;
+  --lavender: #8b7cff;
+  --candy: #ff9fd6;
+  --cream: #f5e9dd;
+  --deep: #3b2e55;
+  --ink: var(--deep);
+  --paper: #fffaf6;
   --muted: #6d5f86;
-  --pink: #ff4f79;
-  --sky: #4cc9f0;
-  --sun: #ffd166;
+  --pink: var(--rose);
+  --sun: var(--yellow);
   --display: 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif;
   --body: 'Nunito', system-ui, sans-serif;
 }

@@ -16,6 +16,7 @@ import { Hud } from '../ui/Hud';
 import { OfflineSession, type RaceSession } from '../net/Network';
 import type { ColyseusSession } from '../net/ColyseusSession';
 import { RemoteKarts } from './RemoteKarts';
+import { toyEnvironment } from '../models/toy';
 
 const STEP = 1 / PHYSICS_HZ;
 const KART_RADIUS = 0.75;
@@ -58,6 +59,7 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
 
+    toyEnvironment(this.renderer, this.scene, 0.35);
     this.track = new Track(MEADOW_LOOP, this.world);
     this.scene.add(this.track.group);
     this.env = new Environment(this.scene, this.world, this.track);
@@ -157,7 +159,7 @@ export class Game {
     if (id === this.characterId) return;
     this.characterId = id;
     const ch = characterById(id);
-    this.scene.remove(this.model.root);
+    this.scene.remove(this.model.root); this.model.dispose();
     this.model = new KartModel(ch);
     this.scene.add(this.model.root);
     this.kart.setCharacter(ch);
