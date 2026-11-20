@@ -17,6 +17,7 @@ import { Hud } from '../ui/Hud';
 import { OfflineSession, type RaceSession } from '../net/Network';
 import type { ColyseusSession } from '../net/ColyseusSession';
 import { RemoteKarts } from './RemoteKarts';
+import { Look } from './Look';
 
 const STEP = 1 / PHYSICS_HZ;
 const KART_RADIUS = 0.75;
@@ -25,7 +26,7 @@ const KART_RADIUS = 0.75;
 export class Game {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(70, 1, 0.1, 900);
+  private camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1600);
   private world = new RAPIER.World({ x: 0, y: -25, z: 0 });
   private input = new Input();
   private track: Track;
@@ -48,8 +49,11 @@ export class Game {
   /** Called when an online room closes unexpectedly, or the player leaves it. */
   onLeftRoom?: (reason: string | null) => void;
   private wentGo = false;
+  /** Bumped every time a race starts, so delayed results never show over a newer race. */
+  private raceSerial = 0;
   private sendTimer = 0;
   readonly hud: Hud;
+  private look!: Look;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -57,12 +61,13 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 0.95;
 
     toyEnvironment(this.renderer, this.scene, 0.35);
     this.track = new Track(MEADOW_LOOP, this.world);
     this.scene.add(this.track.group);
     this.env = new Environment(this.scene, this.world, this.track);
+    this.look = new Look(this.renderer, this.scene, this.camera);
 
     const ch = characterById('bubbles');
     this.kart = new KartController(this.world, ch);
@@ -74,16 +79,24 @@ export class Game {
 
     this.hud = new Hud(uiRoot);
     this.hud.onRestart = () => this.startRace();
+    this.hud.setTrack(this.track.path.pts);
     this.kart.onBoost = (k) => { this.model.react(); this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!'); };
-    this.race.onLap = (lap) => this.hud.say(lap === 3 ? 'Final lap!' : `Lap ${lap}`, 1.6);
+    // new laps are announced by the HUD's lap banner
     this.race.onFinish = () => {
       if (this.online) return;
       this.model.setMood('win');   // racing alone, finishing is a win
-      this.hud.showResults(this.race.raceTime, this.race.lapTimes);
+      this.hud.celebrate(null);
+      const raceAt = this.raceSerial;
+      setTimeout(() => { if (raceAt === this.raceSerial && !this.online) this.hud.showResults(this.race.raceTime, this.race.lapTimes); }, 2400);
     };
 
     this.placeOnGrid(0);
     window.addEventListener('resize', () => this.resize());
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyG' || (e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const q = this.look.toggle(); this.resize();
+      if (this.mode === 'race') this.hud.say(q === 'high' ? 'Graphics: High' : 'Graphics: Low', 1.2);
+    });
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
   }
@@ -94,7 +107,7 @@ export class Game {
     this.practiceCharacter = character;
     this.setCharacter(character);
     this.model.setMood('race');
-    this.mode = 'race';
+    this.mode = 'race'; this.raceSerial++;
     this.hud.show(true); this.hud.hideResults();
     this.placeOnGrid(0);
     this.wentGo = false;
@@ -113,7 +126,7 @@ export class Game {
         if (this.mode === 'race') this.remotes.sync(w.players, s.me, this.time);
       },
       raceStart: (d) => {
-        this.mode = 'race';
+        this.mode = 'race'; this.raceSerial++;
         this.hud.show(true); this.hud.hideResults();
         this.placeOnGrid(d.grid[s.me] ?? 0);
         this.model.setMood('race'); this.remotes.setMoods(null);
@@ -128,7 +141,7 @@ export class Game {
         if (d.id !== s.me) return;
         this.race.phase = 'finished';
         this.model.setMood(d.place === 1 ? 'win' : 'lose');
-        this.hud.say(`You finished ${ordinal(d.place)}!`, 3);
+        this.hud.celebrate(d.place);
       },
       results: (rows) => {
         const mine = rows.find((r) => r.id === s.me);
@@ -185,6 +198,7 @@ export class Game {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.look?.resize();
   }
 
   private physicsStep() {
@@ -233,13 +247,16 @@ export class Game {
       this.rig.update(dt, target, this.kart.yaw, speed);
       const counting = this.race.phase === 'countdown';
       if (!counting && !this.wentGo) { this.wentGo = true; this.hud.flashGo(); }
-      const players = this.online?.latest?.players.length ?? 1;
+      const players = this.online?.latest?.players ?? null;
+      const me = this.online?.me;
       this.hud.update(dt, {
         lap: this.online && this.meView ? this.meView.lap : this.race.lap,
         time: this.race.raceTime, kmh: speed * 3.6,
-        drift: this.kart.driftCharge, driftLevel: this.kart.driftLevel,
+        drift: this.kart.driftCharge, driftLevel: this.kart.driftLevel, boosting: this.kart.boosting,
         countdown: counting ? (this.online ? Math.max(0.01, this.countdownEndsAt - this.time) : this.race.countdown) : null,
-        place: this.online && this.meView ? `${ordinal(this.meView.place)} / ${players}` : null,
+        place: this.online && this.meView && players ? { n: this.meView.place, of: players.length } : null,
+        standings: players ? players.map((pl) => ({ id: pl.id, name: pl.name, character: pl.character, me: pl.id === me })) : null,
+        dots: [...this.remotes.positions().map((r) => ({ ...r, me: false })), { x: p.x, z: p.z, character: this.model.ch.id, me: true }],
         net: this.online ? { state: this.online.connection, ping: this.online.pingMs } : null,
       });
       this.sendTimer += dt;
@@ -249,7 +266,7 @@ export class Game {
         if (!this.online || this.online.connection === 'online') this.session.sendSnapshot(this.kart.snapshot());
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    this.look.render(dt, this.mode === 'race' && this.kart.boosting ? 1 : 0);
   }
 }
 
