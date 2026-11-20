@@ -6,7 +6,7 @@ const GRAY = 0x9a98a8, DARK = 0x5d5b6e, WHITE = 0xfbf8f2, PINK = 0xf2a5b0, GOGGL
 
 /** Bubbles: gray and white cat, yellow racing goggles, big excited eyes. */
 export function buildBubbles(): CharacterRig {
-  const rig = toyBody({ outfit: 0x2c2e45, trim: 0xe5a94b, chest: WHITE, hands: WHITE, feet: 0x252638 });
+  const rig = toyBody({ outfit: 0x2c2e45, trim: 0xe5a94b, chest: WHITE, hands: WHITE, feet: 0x252638, stripes: true });
   const h = rig.head;
   const fur = vinyl(GRAY, 0.6), white = vinyl(WHITE, 0.55);
 
