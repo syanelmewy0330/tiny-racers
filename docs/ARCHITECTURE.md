@@ -14,7 +14,11 @@
 - Other racers are drawn from snapshots with smoothing and slight prediction, and have kinematic physics bodies so karts bump. Your own kart is simulated locally for instant controls.
 - Hosting: one Render web service (`render.yaml`). `server/src/index.ts` serves `client/dist` over HTTP and Colyseus over WebSocket on the same port, so the game connects to its own address.
 
+## Characters (milestone 4)
+- `shared/characters.ts` holds each racer's stats (1 to 5). `KartController` turns them into physics numbers (top speed, acceleration, turn rate), so stats change how the kart drives, not just how it looks.
+- `KartModel` builds a different kart and driver per character from simple shapes (placeholders until real models), plus `setMood('race' | 'win' | 'lose')` for the finish animations.
+- The choice is sent when joining a room (`character` option) and can be changed in the lobby with a `character` message. The server checks it is a real id (`isCharacterId`) and only allows changes between races. Duplicates are allowed, so two people can both be Bubbles.
+
 ## Later milestones
-4. Characters: real models per racer, stats already in `shared/characters.ts`.
 5. Power-ups (boosts, projectiles, banana traps, shields), abilities, kart customization.
 6. More tracks (each one a `TrackDef`), menus, sound, podium, progression.

@@ -2,7 +2,7 @@
 
 A cute 3D arcade kart racing game for the browser, built with Vite, TypeScript, Three.js and Rapier physics.
 
-**Current milestone: 3, online for everyone.** Up to 8 racers. Press **Quick race** to race anyone online, or **Create private room** and share its code. The server referees the race: countdown, laps, places and results.
+**Current milestone: 4, the four characters.** Pick Bubbles, Taco, Nimbus or Peanut on the title screen. Each has their own kart, driver and stats (speed, acceleration, handling), and cheers or droops at the finish. Online, everyone sees each other's racer and can switch racers in the lobby. Up to 8 racers: press **Quick race** to race anyone online, or **Create private room** and share its code.
 
 ## Run it on Windows
 
@@ -87,7 +87,7 @@ tiny-racers/
         Game.ts           main loop: fixed 60 Hz physics, then drawing
         Input.ts          keyboard
         KartController.ts how the kart drives (speed, steering, drift, boosts) on Rapier
-        KartModel.ts      the placeholder 3D kart and driver (visual only)
+        KartModel.ts      each character's 3D kart and driver, win/lose poses (visual only)
         Track.ts          road, curbs, walls (with physics), boost pads, start line
         Environment.ts    sky, lights, trees, flowers, hills, clouds, start arch
         CameraRig.ts      chase camera
@@ -101,7 +101,9 @@ tiny-racers/
     trackMath.ts          lap and progress maths
       game/RemoteKarts.ts the other racers: smooth movement, name tags, bumping
       ui/TitleScreen.ts   practice, create room, join room
-      ui/Lobby.ts         waiting room with the invite code
+      ui/Lobby.ts         waiting room with the invite code and racer switcher
+      ui/CharacterPicker.ts the character cards (portrait, stats, ability)
+  client/public/characters/ the four character portraits
       net/ColyseusSession.ts talks to the race server
   server/src/
     index.ts              starts the Colyseus server (port 2567) and serves the built game

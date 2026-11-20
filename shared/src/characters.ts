@@ -40,3 +40,7 @@ export const CHARACTERS: CharacterDef[] = [
 
 export const characterById = (id: string): CharacterDef =>
   CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0];
+
+/** True when `id` names one of the four racers (used to check what players send the server). */
+export const isCharacterId = (id: unknown): id is CharacterDef['id'] =>
+  typeof id === 'string' && CHARACTERS.some((c) => c.id === id);

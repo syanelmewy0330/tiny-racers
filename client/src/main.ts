@@ -11,7 +11,7 @@ async function boot() {
   const game = new Game(document.getElementById('scene') as HTMLCanvasElement, ui);
 
   let closeLobby: (() => void) | null = null;
-  const title = (message = '') => showTitle(ui, { onPractice: () => game.startRace(), onRoom }, message);
+  const title = (message = '') => showTitle(ui, { onPractice: (character) => game.startRace(character), onRoom }, message);
   const onRoom = (s: ColyseusSession) => {
     game.attachRoom(s);
     closeLobby = showLobby(ui, s, () => game.leaveRoom());

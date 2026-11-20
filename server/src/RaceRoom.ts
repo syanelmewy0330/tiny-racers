@@ -1,6 +1,6 @@
 import { Room, type Client } from '@colyseus/core';
 import { MAX_PLAYERS, LAPS, COUNTDOWN_SECONDS } from '../../shared/src/constants.ts';
-import { CHARACTERS } from '../../shared/src/characters.ts';
+import { CHARACTERS, isCharacterId } from '../../shared/src/characters.ts';
 import { buildPath, nearest, indexDelta } from '../../shared/src/trackMath.ts';
 import { MEADOW_LOOP } from '../../shared/src/tracks/meadowLoop.ts';
 import type { KartSnapshot } from '../../shared/src/types.ts';
@@ -47,16 +47,22 @@ export class RaceRoom extends Room {
 
     this.onMessage('start', (client: Client) => { if (client.sessionId === this.hostId) this.startRace(); });
     this.onMessage('snap', (client: Client, msg: unknown) => this.onSnap(client, msg));
+    // Change racer while waiting in the lobby (not mid-race). Several players may pick the same one.
+    this.onMessage('character', (client: Client, id: unknown) => {
+      const p = this.players.get(client.sessionId);
+      if (p && isCharacterId(id) && (this.phase === 'lobby' || this.phase === 'results')) p.character = id;
+    });
     this.clock.setInterval(() => this.tick(), 50);   // 20 updates a second
   }
 
-  onJoin(client: Client, options: { name?: unknown } = {}) {
+  onJoin(client: Client, options: { name?: unknown; character?: unknown } = {}) {
     if (this.phase !== 'lobby' && this.phase !== 'results') throw new Error('race_in_progress');
     const name = String(options.name ?? 'Racer').replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 14) || 'Racer';
     const used = new Set([...this.players.values()].map((p) => p.slot));
     let slot = 0; while (used.has(slot)) slot++;
     this.players.set(client.sessionId, {
-      id: client.sessionId, name, character: CHARACTERS[slot % CHARACTERS.length].id, slot,
+      id: client.sessionId, name, slot,
+      character: isCharacterId(options.character) ? options.character : CHARACTERS[slot % CHARACTERS.length].id,
       snap: { x: 0, y: 0, z: 0, yaw: 0, speed: 0, drift: 0 }, lastSnapAt: 0, index: 0, progress: 0, finishedAt: null,
     });
     if (!this.hostId) this.hostId = client.sessionId;

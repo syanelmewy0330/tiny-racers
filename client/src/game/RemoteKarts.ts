@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { characterById } from '@shared/characters';
-import type { PlayerView } from '@shared/protocol';
+import type { PlayerView, ResultRow } from '@shared/protocol';
 import { KartModel } from './KartModel';
 
 interface Remote {
@@ -28,6 +28,7 @@ export class RemoteKarts {
     for (const p of players) {
       if (p.id === me) continue;
       let r = this.karts.get(p.id);
+      if (r && r.model.ch.id !== p.character) { this.remove(p.id, r); r = undefined; }   // they picked another racer
       if (!r) {
         const model = new KartModel(characterById(p.character));
         const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, 0.75, p.z));
@@ -57,6 +58,14 @@ export class RemoteKarts {
       r.model.root.position.set(r.x, 0, r.z);
       r.model.root.rotation.y = r.yaw;
       r.model.animate(dt, t.speed, 0, t.drift, t.drift ? 1 : 0, t.speed > 36, time);
+    }
+  }
+
+  /** After a race: winner cheers, everyone else droops. `null` puts everyone back to racing. */
+  setMoods(rows: ResultRow[] | null) {
+    for (const [id, r] of this.karts) {
+      const row = rows?.find((x) => x.id === id);
+      r.model.setMood(!row ? 'race' : row.place === 1 ? 'win' : 'lose');
     }
   }
 

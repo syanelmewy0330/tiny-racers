@@ -12,7 +12,7 @@ const PORT = Number(process.env.PORT ?? 2567);
 const GAME_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist');
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm',
-  '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon',
 };
 
 /** Serves the game files. Returns false for requests Colyseus should answer (matchmaking). */
@@ -23,7 +23,7 @@ function serveGame(req: http.IncomingMessage, res: http.ServerResponse): boolean
   if (!fs.existsSync(GAME_DIR)) { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('Tiny Racers server is running. (Run "npm run build" to serve the game from here too.)'); return true; }
   let file = path.join(GAME_DIR, decodeURIComponent(url.pathname));
   if (!file.startsWith(GAME_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(GAME_DIR, 'index.html');
-  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': file.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000' });
+  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': file.includes(`${path.sep}assets${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache' });
   fs.createReadStream(file).pipe(res);
   return true;
 }

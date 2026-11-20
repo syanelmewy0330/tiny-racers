@@ -44,25 +44,28 @@ export class ColyseusSession implements RaceSession {
     room.onLeave((code: number) => { if (!this.leaving) this.events.closed?.(`Lost connection to the race server (code ${code}).`); });
   }
 
-  static async create(serverUrl: string, name: string): Promise<ColyseusSession> {
-    const room = await new Client(serverUrl).create('race', { name });
+  static async create(serverUrl: string, name: string, character: string): Promise<ColyseusSession> {
+    const room = await new Client(serverUrl).create('race', { name, character });
     return new ColyseusSession(room);
   }
 
   /** Quick race: join any public room that is waiting, or open a new one. */
-  static async quick(serverUrl: string, name: string): Promise<ColyseusSession> {
-    const room = await new Client(serverUrl).joinOrCreate('public', { name });
+  static async quick(serverUrl: string, name: string, character: string): Promise<ColyseusSession> {
+    const room = await new Client(serverUrl).joinOrCreate('public', { name, character });
     return new ColyseusSession(room);
   }
 
-  static async join(serverUrl: string, code: string, name: string): Promise<ColyseusSession> {
-    const room = await new Client(serverUrl).joinById(code.trim().toUpperCase(), { name });
+  static async join(serverUrl: string, code: string, name: string, character: string): Promise<ColyseusSession> {
+    const room = await new Client(serverUrl).joinById(code.trim().toUpperCase(), { name, character });
     return new ColyseusSession(room);
   }
 
   get isHost() { return !!this.latest && this.latest.hostId === this.me; }
 
   start() { this.room.send('start'); }
+
+  /** Pick a different racer while in the lobby. */
+  setCharacter(id: string) { this.room.send('character', id); }
 
   sendSnapshot(s: KartSnapshot) {
     this.room.send('snap', {

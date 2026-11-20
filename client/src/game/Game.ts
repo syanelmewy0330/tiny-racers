@@ -42,6 +42,8 @@ export class Game {
   private online: ColyseusSession | null = null;
   private meView: PlayerView | null = null;
   private characterId = 'bubbles';
+  /** The racer picked on the title screen, used for practice and "Race again". */
+  private practiceCharacter = 'bubbles';
   /** Called when an online room closes unexpectedly, or the player leaves it. */
   onLeftRoom?: (reason: string | null) => void;
   private wentGo = false;
@@ -72,7 +74,11 @@ export class Game {
     this.hud.onRestart = () => this.startRace();
     this.kart.onBoost = (k) => this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!');
     this.race.onLap = (lap) => this.hud.say(lap === 3 ? 'Final lap!' : `Lap ${lap}`, 1.6);
-    this.race.onFinish = () => { if (!this.online) this.hud.showResults(this.race.raceTime, this.race.lapTimes); };
+    this.race.onFinish = () => {
+      if (this.online) return;
+      this.model.setMood('win');   // racing alone, finishing is a win
+      this.hud.showResults(this.race.raceTime, this.race.lapTimes);
+    };
 
     this.placeOnGrid(0);
     window.addEventListener('resize', () => this.resize());
@@ -81,9 +87,11 @@ export class Game {
   }
 
   /** Practice on your own: the title screen's Practice button, and "Race again". */
-  startRace() {
+  startRace(character = this.practiceCharacter) {
     if (this.online) this.leaveRoom();
-    this.setCharacter('bubbles');
+    this.practiceCharacter = character;
+    this.setCharacter(character);
+    this.model.setMood('race');
     this.mode = 'race';
     this.hud.show(true); this.hud.hideResults();
     this.placeOnGrid(0);
@@ -104,6 +112,7 @@ export class Game {
         this.mode = 'race';
         this.hud.show(true); this.hud.hideResults();
         this.placeOnGrid(d.grid[s.me] ?? 0);
+        this.model.setMood('race'); this.remotes.setMoods(null);
         this.race.countdown = d.countdown + 30;   // the server says GO, not our own timer
         this.countdownEndsAt = this.time + d.countdown;
         this.wentGo = false; this.rig.snap();
@@ -111,8 +120,18 @@ export class Game {
       },
       go: () => { this.race.phase = 'racing'; this.race.countdown = 0; },
       correct: (d) => this.kart.placeAt(d.x, d.z, d.yaw),
-      finish: (d) => { if (d.id === s.me) { this.race.phase = 'finished'; this.hud.say(`You finished ${ordinal(d.place)}!`, 3); } },
-      results: (rows) => this.hud.showOnlineResults(rows, s.me, s.isHost, () => s.start(), () => this.leaveRoom()),
+      finish: (d) => {
+        if (d.id !== s.me) return;
+        this.race.phase = 'finished';
+        this.model.setMood(d.place === 1 ? 'win' : 'lose');
+        this.hud.say(`You finished ${ordinal(d.place)}!`, 3);
+      },
+      results: (rows) => {
+        const mine = rows.find((r) => r.id === s.me);
+        if (mine) this.model.setMood(mine.place === 1 ? 'win' : 'lose');
+        this.remotes.setMoods(rows);
+        this.hud.showOnlineResults(rows, s.me, s.isHost, () => s.start(), () => this.leaveRoom());
+      },
       closed: (reason) => this.leaveRoom(reason),
     };
   }

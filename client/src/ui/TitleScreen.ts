@@ -1,4 +1,5 @@
 import { ColyseusSession, defaultServerUrl } from '../net/ColyseusSession';
+import { characterCards, savedCharacter, saveCharacter } from './CharacterPicker';
 
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } },
@@ -6,14 +7,16 @@ const store = {
 };
 
 /** First screen: practice alone, or create / join an online room. */
-export function showTitle(parent: HTMLElement, h: { onPractice: () => void; onRoom: (s: ColyseusSession) => void }, message = '') {
+export function showTitle(parent: HTMLElement, h: { onPractice: (character: string) => void; onRoom: (s: ColyseusSession) => void }, message = '') {
   const screen = document.createElement('div');
   screen.className = 'screen';
   screen.innerHTML = `
-    <div class="panel" style="width:min(600px,100%)">
+    <div class="panel" style="width:min(860px,100%)">
       <h1 class="logo">Tiny Racers</h1>
       <p class="sub">Meadow Loop · 3 laps</p>
       <p class="error" data-msg ${message ? '' : 'hidden'}></p>
+      <h2>Choose your racer</h2>
+      <div data-picker></div>
       <div class="row" style="justify-content:flex-start"><button class="btn ghost" data-practice>Practice alone</button></div>
       <h2>Race online</h2>
       <label class="field">Your name <input data-name maxlength="14" placeholder="Your name" autocomplete="off"></label>
@@ -44,6 +47,8 @@ export function showTitle(parent: HTMLElement, h: { onPractice: () => void; onRo
   const msg = q<HTMLElement>('[data-msg]'); msg.textContent = message;
   const name = q<HTMLInputElement>('[data-name]'), code = q<HTMLInputElement>('[data-code]'), server = q<HTMLInputElement>('[data-server]');
   name.value = store.get('tr-name'); server.value = store.get('tr-server') || defaultServerUrl();
+  let character = savedCharacter();
+  q<HTMLElement>('[data-picker]').replaceWith(characterCards(character, (id) => { character = id; saveCharacter(id); }));
   const say = (t: string) => { msg.hidden = !t; msg.textContent = t; };
   const close = () => { screen.remove(); window.removeEventListener('keydown', onKey); };
   const busy = (on: boolean) => screen.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = on));
@@ -55,7 +60,7 @@ export function showTitle(parent: HTMLElement, h: { onPractice: () => void; onRo
     busy(true); say(kind === 'create' ? 'Creating a room… (the first visit can take up to a minute while the server wakes up)' : kind === 'quick' ? 'Finding a race…' : 'Joining…');
     try {
       const url = server.value.trim();
-      const s = kind === 'create' ? await ColyseusSession.create(url, n) : kind === 'quick' ? await ColyseusSession.quick(url, n) : await ColyseusSession.join(url, code.value, n);
+      const s = kind === 'create' ? await ColyseusSession.create(url, n, character) : kind === 'quick' ? await ColyseusSession.quick(url, n, character) : await ColyseusSession.join(url, code.value, n, character);
       close(); h.onRoom(s);
     } catch (e) {
       busy(false);
@@ -66,11 +71,11 @@ export function showTitle(parent: HTMLElement, h: { onPractice: () => void; onRo
     }
   }
 
-  q<HTMLButtonElement>('[data-practice]').onclick = () => { close(); h.onPractice(); };
+  q<HTMLButtonElement>('[data-practice]').onclick = () => { close(); h.onPractice(character); };
   q<HTMLButtonElement>('[data-create]').onclick = () => connect('create');
   q<HTMLButtonElement>('[data-quick]').onclick = () => connect('quick');
   q<HTMLButtonElement>('[data-join]').onclick = () => connect('join');
   code.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect('join'); });
-  const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' && document.activeElement === document.body) { close(); h.onPractice(); } };
+  const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' && document.activeElement === document.body) { close(); h.onPractice(character); } };
   window.addEventListener('keydown', onKey);
 }
