@@ -1,4 +1,4 @@
-import type { CharacterDef } from './characters';
+import { isCharacterId, type CharacterDef } from './characters';
 
 /** One paint job for a kart. Paint is cosmetic only: it never changes how the kart drives. */
 export interface PaintDef { name: string; body: number; trim: number }
@@ -81,4 +81,12 @@ export function combinedStats(ch: CharacterDef, kart: KartDef) {
     acceleration: ch.stats.acceleration + kart.mods.acceleration * 0.5,
     handling: ch.stats.handling + kart.mods.handling * 0.5,
   };
+}
+
+/** A loadout from untrusted input (network, browser storage), with safe fallbacks. */
+export function cleanLoadout(raw: Partial<Record<keyof Loadout, unknown>> | null | undefined, fallbackCharacter: CharacterDef['id'] = 'bubbles'): Loadout {
+  const character = isCharacterId(raw?.character) ? raw!.character as CharacterDef['id'] : fallbackCharacter;
+  const kart = isKartId(raw?.kart) ? raw!.kart as KartId : signatureKart(character).id;
+  const paint = isPaintIndex(kart, raw?.paint) ? raw!.paint as number : 0;
+  return { character, kart, paint };
 }

@@ -28,9 +28,9 @@ export class RemoteKarts {
     for (const p of players) {
       if (p.id === me) continue;
       let r = this.karts.get(p.id);
-      if (r && r.model.ch.id !== p.character) { this.remove(p.id, r); r = undefined; }   // they picked another racer
+      if (r && (r.model.ch.id !== p.character || r.model.kartDef.id !== p.kart || r.model.paint !== p.paint)) { this.remove(p.id, r); r = undefined; }   // they changed racer, kart or paint
       if (!r) {
-        const model = createRacerModel(characterById(p.character));
+        const model = createRacerModel(characterById(p.character), p.kart, p.paint);
         const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, 0.75, p.z));
         this.world.createCollider(RAPIER.ColliderDesc.ball(0.75).setRestitution(0.4), body);
         const tag = nameTag(p.name);

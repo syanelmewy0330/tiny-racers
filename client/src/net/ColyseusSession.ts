@@ -1,5 +1,6 @@
 import { Client, type Room } from '@colyseus/sdk';
 import type { KartSnapshot } from '@shared/types';
+import type { Loadout } from '@shared/karts';
 import type { WorldMessage, ResultRow } from '@shared/protocol';
 import type { RaceSession } from './Network';
 
@@ -65,19 +66,19 @@ export class ColyseusSession implements RaceSession {
     this.pingTimer = window.setInterval(ping, 2000); ping();
   }
 
-  static async create(serverUrl: string, name: string, character: string): Promise<ColyseusSession> {
-    const room = await new Client(serverUrl).create('race', { name, character });
+  static async create(serverUrl: string, name: string, loadout: Loadout): Promise<ColyseusSession> {
+    const room = await new Client(serverUrl).create('race', { name, ...loadout });
     return new ColyseusSession(room);
   }
 
   /** Quick race: join any public room that is waiting, or open a new one. */
-  static async quick(serverUrl: string, name: string, character: string): Promise<ColyseusSession> {
-    const room = await new Client(serverUrl).joinOrCreate('public', { name, character });
+  static async quick(serverUrl: string, name: string, loadout: Loadout): Promise<ColyseusSession> {
+    const room = await new Client(serverUrl).joinOrCreate('public', { name, ...loadout });
     return new ColyseusSession(room);
   }
 
-  static async join(serverUrl: string, code: string, name: string, character: string): Promise<ColyseusSession> {
-    const room = await new Client(serverUrl).joinById(code.trim().toUpperCase(), { name, character });
+  static async join(serverUrl: string, code: string, name: string, loadout: Loadout): Promise<ColyseusSession> {
+    const room = await new Client(serverUrl).joinById(code.trim().toUpperCase(), { name, ...loadout });
     return new ColyseusSession(room);
   }
 
@@ -90,6 +91,9 @@ export class ColyseusSession implements RaceSession {
 
   /** Pick a different racer while in the lobby. */
   setCharacter(id: string) { this.room.send('character', id); }
+
+  /** Pick a different kart or paint while in the lobby. */
+  setKart(kart: string, paint: number) { this.room.send('kart', { kart, paint }); }
 
   sendSnapshot(s: KartSnapshot) {
     this.room.send('snap', {

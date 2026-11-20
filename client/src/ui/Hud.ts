@@ -4,7 +4,7 @@ import { characterById } from '@shared/characters';
 import type { ResultRow } from '@shared/protocol';
 
 const PRACTICE_RESULTS = `<h2>Finished!</h2><div class="time" data-total></div><ol class="laps" data-laps></ol>
-  <div class="row" style="justify-content:center"><button class="btn" data-again>Race again</button></div>`;
+  <div class="row" style="justify-content:center"><button class="btn ghost" data-menu>Main menu</button><button class="btn" data-again>Race again</button></div>`;
 
 const el = (html: string) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild as HTMLElement; };
 
@@ -17,6 +17,8 @@ export class Hud {
   private driftBar: HTMLElement; private big: HTMLElement; private toast: HTMLElement; private results: HTMLElement;
   private toastTimer = 0;
   onRestart?: () => void;
+  /** Practice results: back to the main menu. */
+  onMenu?: () => void;
 
   constructor(parent: HTMLElement) {
     this.root = el(`<div class="hud" hidden>
@@ -74,6 +76,7 @@ export class Hud {
   showResults(total: number, laps: number[]) {
     (this.results.querySelector('.panel') as HTMLElement).innerHTML = PRACTICE_RESULTS;
     (this.results.querySelector('[data-again]') as HTMLElement).onclick = () => this.onRestart?.();
+    (this.results.querySelector('[data-menu]') as HTMLElement).onclick = () => this.onMenu?.();
     (this.results.querySelector('[data-total]') as HTMLElement).textContent = formatTime(total);
     const list = this.results.querySelector('[data-laps]') as HTMLElement; list.textContent = '';
     laps.forEach((t, i) => { const li = document.createElement('li'); li.innerHTML = `<span class="pos">${i + 1}</span><span>Lap ${i + 1}</span><span class="t">${formatTime(t)}</span>`; list.append(li); });

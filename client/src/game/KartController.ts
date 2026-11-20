@@ -1,10 +1,12 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { CharacterDef } from '@shared/characters';
+
+type Stats = CharacterDef['stats'];
 import type { ControlInput, KartSnapshot } from '@shared/types';
 
-/** Physics numbers derived from a character's 1..5 stats. */
-function tuning(ch: CharacterDef) {
-  const { speed, acceleration, handling } = ch.stats;
+/** Physics numbers derived from 1..5 stats (character plus kart). */
+function tuning(stats: Stats) {
+  const { speed, acceleration, handling } = stats;
   return {
     maxSpeed: 24 + speed * 1.6,          // m/s on asphalt (about 100 km/h)
     accel: 10 + acceleration * 2.2,      // m/s² at low speed
@@ -33,11 +35,11 @@ export class KartController {
   /** Set by Game when a mini-turbo or pad fires, for the HUD toast. */
   onBoost?: (kind: 'pad' | 'mini' | 'super') => void;
   private t: ReturnType<typeof tuning>;
-  setCharacter(ch: CharacterDef) { this.t = tuning(ch); }
+  setStats(stats: Stats) { this.t = tuning(stats); }
   private driftHeld = false;
 
   constructor(world: RAPIER.World, ch: CharacterDef) {
-    this.t = tuning(ch);
+    this.t = tuning(ch.stats);
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 1, 0).lockRotations().setCcdEnabled(true).setLinearDamping(0),
     );

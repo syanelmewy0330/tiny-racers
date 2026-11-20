@@ -1,7 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import './style.css';
 import { Game } from './game/Game';
-import { showTitle } from './ui/TitleScreen';
+import { showMenu } from './ui/Menu';
 import { showLobby } from './ui/Lobby';
 import type { ColyseusSession } from './net/ColyseusSession';
 
@@ -11,13 +11,14 @@ async function boot() {
   const game = new Game(document.getElementById('scene') as HTMLCanvasElement, ui);
 
   let closeLobby: (() => void) | null = null;
-  const title = (message = '') => showTitle(ui, { onPractice: (character) => game.startRace(character), onRoom }, message);
+  const title = (message = '') => { showMenu(ui, { onPractice: (loadout) => game.startRace(loadout), onRoom }, message); };
   const onRoom = (s: ColyseusSession) => {
     game.attachRoom(s);
     closeLobby = showLobby(ui, s, () => game.leaveRoom());
   };
   game.onRaceStarted = () => { closeLobby?.(); closeLobby = null; };
   game.onLeftRoom = (reason) => { closeLobby?.(); closeLobby = null; title(reason ?? ''); };
+  game.onMenu = () => title();
   title();
   (window as unknown as { tinyRacers: Game }).tinyRacers = game;   // handy for debugging in the browser console
 }

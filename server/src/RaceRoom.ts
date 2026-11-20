@@ -1,6 +1,7 @@
 import { Room, type Client } from '@colyseus/core';
 import { MAX_PLAYERS, LAPS, COUNTDOWN_SECONDS } from '../../shared/src/constants.ts';
 import { CHARACTERS, isCharacterId } from '../../shared/src/characters.ts';
+import { cleanLoadout, isKartId, isPaintIndex } from '../../shared/src/karts.ts';
 import { buildPath, nearest, indexDelta } from '../../shared/src/trackMath.ts';
 import { MEADOW_LOOP } from '../../shared/src/tracks/meadowLoop.ts';
 import type { KartSnapshot } from '../../shared/src/types.ts';
@@ -17,6 +18,8 @@ interface Player {
   id: string;
   name: string;
   character: string;
+  kart: string;
+  paint: number;
   slot: number;
   snap: KartSnapshot;
   lastSnapAt: number;
@@ -60,17 +63,23 @@ export class RaceRoom extends Room {
       const p = this.players.get(client.sessionId);
       if (p && isCharacterId(id) && (this.phase === 'lobby' || this.phase === 'results')) p.character = id;
     });
+    // Change kart and paint (from the garage) while waiting.
+    this.onMessage('kart', (client: Client, msg: { kart?: unknown; paint?: unknown } | null) => {
+      const p = this.players.get(client.sessionId);
+      if (!p || (this.phase !== 'lobby' && this.phase !== 'results') || !isKartId(msg?.kart)) return;
+      p.kart = msg.kart; p.paint = isPaintIndex(msg.kart, msg.paint) ? msg.paint : 0;
+    });
     this.clock.setInterval(() => this.tick(), 50);   // 20 updates a second
   }
 
-  onJoin(client: Client, options: { name?: unknown; character?: unknown } = {}) {
+  onJoin(client: Client, options: { name?: unknown; character?: unknown; kart?: unknown; paint?: unknown } = {}) {
     if (this.phase !== 'lobby' && this.phase !== 'results') throw new Error('race_in_progress');
     const name = String(options.name ?? 'Racer').replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 14) || 'Racer';
     const used = new Set([...this.players.values()].map((p) => p.slot));
     let slot = 0; while (used.has(slot)) slot++;
     this.players.set(client.sessionId, {
       id: client.sessionId, name, slot,
-      character: isCharacterId(options.character) ? options.character : CHARACTERS[slot % CHARACTERS.length].id,
+      ...cleanLoadout(options, CHARACTERS[slot % CHARACTERS.length].id),
       snap: { x: 0, y: 0, z: 0, yaw: 0, speed: 0, drift: 0 }, lastSnapAt: 0, index: 0, progress: 0, finishedAt: null,
       ready: false, connected: true,
     });
@@ -218,7 +227,7 @@ export class RaceRoom extends Room {
     }
     const order = this.ranking();
     const players: PlayerView[] = order.map((p, i) => ({
-      id: p.id, name: p.name, character: p.character, slot: p.slot, ...p.snap,
+      id: p.id, name: p.name, character: p.character, kart: p.kart, paint: p.paint, slot: p.slot, ...p.snap,
       lap: Math.min(LAPS, Math.max(1, Math.floor(p.progress / N) + 1)), place: i + 1, finished: p.finishedAt !== null,
       ready: p.ready, connected: p.connected,
     }));

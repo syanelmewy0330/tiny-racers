@@ -6,6 +6,6 @@ import { KartModel } from './KartModel';
 export type RacerModel = KartModel;
 
 /** A character in a kart (their signature kart unless another is given). */
-export function createRacerModel(ch: CharacterDef, kart = signatureKart(ch.id).id, paint = 0): RacerModel {
+export function createRacerModel(ch: CharacterDef, kart: string = signatureKart(ch.id).id, paint = 0): RacerModel {
   return new KartModel(ch, kart, paint);
 }

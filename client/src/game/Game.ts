@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { PHYSICS_HZ } from '@shared/constants';
 import { characterById } from '@shared/characters';
+import { cleanLoadout, combinedStats, kartById, type Loadout } from '@shared/karts';
 import type { PlayerView } from '@shared/protocol';
 import { MEADOW_LOOP } from '@shared/tracks/meadowLoop';
 import { yawAt } from '@shared/trackMath';
@@ -42,9 +43,9 @@ export class Game {
   private remotes: RemoteKarts;
   private online: ColyseusSession | null = null;
   private meView: PlayerView | null = null;
-  private characterId = 'bubbles';
-  /** The racer picked on the title screen, used for practice and "Race again". */
-  private practiceCharacter = 'bubbles';
+  private loadout: Loadout = cleanLoadout(null);
+  /** The racer, kart and paint picked in the menus, used for practice and "Race again". */
+  private practiceLoadout: Loadout = cleanLoadout(null);
   /** Called when an online room closes unexpectedly, or the player leaves it. */
   onLeftRoom?: (reason: string | null) => void;
   private wentGo = false;
@@ -66,6 +67,7 @@ export class Game {
 
     const ch = characterById('bubbles');
     this.kart = new KartController(this.world, ch);
+    this.kart.setStats(combinedStats(ch, kartById(this.loadout.kart)));
     this.model = createRacerModel(ch);
     this.scene.add(this.model.root);
     this.rig = new CameraRig(this.camera);
@@ -74,6 +76,8 @@ export class Game {
 
     this.hud = new Hud(uiRoot);
     this.hud.onRestart = () => this.startRace();
+    this.hud.onMenu = () => this.toMenu();
+    window.addEventListener('keydown', (e) => { if (e.code === 'Escape' && this.mode === 'race' && !this.online) this.toMenu(); });
     this.kart.onBoost = (k) => { this.model.react(); this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!'); };
     this.race.onLap = (lap) => this.hud.say(lap === 3 ? 'Final lap!' : `Lap ${lap}`, 1.6);
     this.race.onFinish = () => {
@@ -89,10 +93,10 @@ export class Game {
   }
 
   /** Practice on your own: the title screen's Practice button, and "Race again". */
-  startRace(character = this.practiceCharacter) {
+  startRace(loadout = this.practiceLoadout) {
     if (this.online) this.leaveRoom();
-    this.practiceCharacter = character;
-    this.setCharacter(character);
+    this.practiceLoadout = loadout;
+    this.setLoadout(loadout);
     this.model.setMood('race');
     this.mode = 'race';
     this.hud.show(true); this.hud.hideResults();
@@ -109,7 +113,7 @@ export class Game {
         this.meView = w.players.find((p) => p.id === s.me) ?? null;
         // missed "GO" while reconnecting: catch up with the server
         if (this.mode === 'race' && w.phase === 'racing' && this.race.phase === 'countdown') { this.race.phase = 'racing'; this.race.countdown = 0; }
-        if (this.meView && this.meView.character !== this.characterId) this.setCharacter(this.meView.character);
+        if (this.meView) this.setLoadout(cleanLoadout(this.meView));
         if (this.mode === 'race') this.remotes.sync(w.players, s.me, this.time);
       },
       raceStart: (d) => {
@@ -142,6 +146,15 @@ export class Game {
     };
   }
 
+  /** Practice: stop and go back to the main menu. */
+  private toMenu() {
+    if (this.mode !== 'race' || this.online) return;
+    this.mode = 'title'; this.hud.show(false);
+    this.onMenu?.();
+  }
+  /** Called when practice returns to the main menu. */
+  onMenu?: () => void;
+
   /** Called by the lobby when the race begins, so it can hide itself. */
   onRaceStarted?: () => void;
   private countdownEndsAt = 0;
@@ -155,14 +168,15 @@ export class Game {
     this.onLeftRoom?.(reason);
   }
 
-  private setCharacter(id: string) {
-    if (id === this.characterId) return;
-    this.characterId = id;
-    const ch = characterById(id);
+  private setLoadout(l: Loadout) {
+    const cur = this.loadout;
+    if (l.character === cur.character && l.kart === cur.kart && l.paint === cur.paint) return;
+    this.loadout = l;
+    const ch = characterById(l.character);
     this.scene.remove(this.model.root); this.model.dispose();
-    this.model = createRacerModel(ch);
+    this.model = createRacerModel(ch, l.kart, l.paint);
     this.scene.add(this.model.root);
-    this.kart.setCharacter(ch);
+    this.kart.setStats(combinedStats(ch, kartById(l.kart)));
   }
 
   /** Start grid: two columns behind the start line, by slot number (same formula as the server). */

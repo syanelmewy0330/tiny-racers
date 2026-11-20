@@ -7,6 +7,8 @@ export interface PlayerView extends KartSnapshot {
   id: string;
   name: string;
   character: string;
+  kart: string;
+  paint: number;
   slot: number;
   lap: number;
   place: number;
