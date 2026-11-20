@@ -23,9 +23,9 @@ export class Hud {
       <div class="chips"><span class="chip" data-lap>Lap 1/${LAPS}</span><span class="chip" data-time>0:00.00</span><span class="chip" data-place hidden></span><span class="chip net" data-net hidden></span></div>
       <div class="speedo">
         <svg viewBox="0 0 100 100" aria-hidden="true">
-          <circle cx="50" cy="50" r="46" fill="#fffaf3" stroke="#2a1e3f" stroke-width="3"/>
-          <path d="M 22 78 A 38 38 0 1 1 78 78" fill="none" stroke="#eee6f5" stroke-width="9" stroke-linecap="round"/>
-          <path data-arc d="M 22 78 A 38 38 0 1 1 78 78" fill="none" stroke="#ff4f79" stroke-width="9" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/>
+          <circle cx="50" cy="50" r="47" fill="rgba(37,38,56,.9)" stroke="#ffffff" stroke-opacity=".18" stroke-width="2"/>
+          <path d="M 22 78 A 38 38 0 1 1 78 78" fill="none" stroke="#3c3f5c" stroke-width="8" stroke-linecap="round"/>
+          <path data-arc d="M 22 78 A 38 38 0 1 1 78 78" fill="none" stroke="#e5a94b" stroke-width="8" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/>
         </svg>
         <div class="num"><b data-speed>0</b><span>km/h</span></div>
       </div>
@@ -62,7 +62,7 @@ export class Hud {
     this.speed.textContent = String(Math.round(Math.abs(d.kmh)));
     this.arc.setAttribute('stroke-dasharray', `${Math.min(100, Math.abs(d.kmh) / 1.6)} 100`);
     this.driftBar.style.width = `${Math.min(100, (d.drift / 1.6) * 100)}%`;
-    this.driftBar.style.background = d.driftLevel >= 2 ? '#ff7b29' : '#4cc9f0';
+    this.driftBar.style.background = d.driftLevel >= 2 ? '#f05b65' : d.driftLevel >= 1 ? '#e5a94b' : '#8790b8';
     if (d.countdown !== null) { this.big.hidden = false; this.big.textContent = d.countdown > 0 ? String(Math.ceil(d.countdown)) : 'GO!'; }
     if (this.toastTimer > 0) { this.toastTimer -= dt; if (this.toastTimer <= 0) this.toast.hidden = true; }
   }
@@ -76,7 +76,7 @@ export class Hud {
     (this.results.querySelector('[data-again]') as HTMLElement).onclick = () => this.onRestart?.();
     (this.results.querySelector('[data-total]') as HTMLElement).textContent = formatTime(total);
     const list = this.results.querySelector('[data-laps]') as HTMLElement; list.textContent = '';
-    laps.forEach((t, i) => { const li = document.createElement('li'); li.textContent = `Lap ${i + 1}  ${formatTime(t)}`; list.append(li); });
+    laps.forEach((t, i) => { const li = document.createElement('li'); li.innerHTML = `<span class="pos">${i + 1}</span><span>Lap ${i + 1}</span><span class="t">${formatTime(t)}</span>`; list.append(li); });
     this.results.hidden = false;
     (this.results.querySelector('[data-again]') as HTMLElement).focus();
   }
@@ -91,15 +91,18 @@ export class Hud {
     const list = panel.querySelector('[data-rows]') as HTMLElement;
     for (const r of rows) {
       const li = document.createElement('li');
-      const dot = document.createElement('span');
-      dot.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;border:2px solid #2a1e3f;background:#${characterById(r.character).color.toString(16).padStart(6, '0')}`;
-      li.append(dot, `${r.place}. ${r.name}${r.id === me ? ' (you)' : ''}  ${r.time === null ? 'did not finish' : formatTime(r.time / 1000)}`);
+      const pos = document.createElement('span'); pos.className = 'pos'; pos.textContent = String(r.place);
+      const face = document.createElement('img'); face.className = 'face'; face.alt = ''; face.src = `characters/${characterById(r.character).id}.jpg`;
+      face.style.cssText = 'width:28px;height:28px;border-radius:8px;object-fit:cover';
+      const name = document.createElement('span'); name.textContent = `${r.name}${r.id === me ? ' (you)' : ''}`;
+      const t = document.createElement('span'); t.className = 't'; t.textContent = r.time === null ? 'did not finish' : formatTime(r.time / 1000);
+      li.append(pos, face, name, t);
       list.append(li);
     }
     const row = panel.querySelector('.row') as HTMLElement;
     if (isHost) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'Rematch'; b.onclick = rematch; row.append(b); }
     else (panel.querySelector('[data-wait]') as HTMLElement).textContent = 'Waiting for the host to start a rematch…';
-    const l = document.createElement('button'); l.className = 'btn ghost'; l.textContent = 'Leave room'; l.onclick = leave; row.append(l);
+    const l = document.createElement('button'); l.className = 'btn coral'; l.textContent = 'Leave room'; l.onclick = leave; row.append(l);
     this.results.hidden = false;
   }
 }

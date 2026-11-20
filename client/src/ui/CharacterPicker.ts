@@ -50,5 +50,12 @@ export function characterCards(selected: string, onPick: (id: CharacterDef['id']
 }
 
 function stat(label: string, v: number) {
-  return `<div class="stat"><span>${label}</span><div class="bar"><i style="width:${v * 20}%"></i></div></div>`;
+  return `<div class="stat"><span>${label}</span>${statBar(v)}</div>`;
+}
+
+/** Five-segment stat bar (values may be halves, e.g. 3.5). */
+export function statBar(v: number) {
+  let cells = '';
+  for (let i = 1; i <= 5; i++) cells += `<i class="${v >= i ? 'on' : v >= i - 0.5 ? 'half' : ''}"></i>`;
+  return `<div class="bar" role="img" aria-label="${v} out of 5">${cells}</div>`;
 }

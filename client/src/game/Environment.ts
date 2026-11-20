@@ -118,19 +118,25 @@ function mushroom(x: number, z: number, s: number): THREE.Group {
 function startArch(track: Track): THREE.Group {
   const g = new THREE.Group();
   const p = track.path.pts[0], yaw = yawAt(track.path, 0), w = track.wallOffset + 1;
-  const postMat = new THREE.MeshStandardMaterial({ color: 0xff4f79 });
+  const postMat = new THREE.MeshStandardMaterial({ color: 0xf05b65 });
   for (const sx of [-1, 1]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 9, 12), postMat);
     post.position.set(sx * w, 4.5, 0); post.castShadow = true; g.add(post);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial({ color: 0xffd166 }));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial({ color: 0xe5a94b }));
     ball.position.set(sx * w, 9.4, 0); g.add(ball);
   }
   const c = document.createElement('canvas'); c.width = 1024; c.height = 160;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#2a1e3f'; ctx.fillRect(0, 0, 1024, 160);
-  ctx.fillStyle = '#ffd166'; ctx.font = '800 104px "Baloo 2", "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('TINY RACERS', 512, 86);
+  const FONT = 'italic 700 104px "Fredoka", "Trebuchet MS", sans-serif';
+  const paint = () => {
+    ctx.fillStyle = '#252638'; ctx.fillRect(0, 0, 1024, 160);
+    for (let x = 0; x < 1024; x += 32) for (let y = 0; y < 2; y++) { ctx.fillStyle = (x / 32 + y) % 2 ? '#ffffff' : '#252638'; ctx.fillRect(x, y * 12, 32, 12); ctx.fillRect(x, 136 + y * 12, 32, 12); }
+    ctx.fillStyle = '#ffffff'; ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('TINY RACERS', 512, 84);
+  };
+  paint();
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  document.fonts?.load(FONT).then(() => { paint(); tex.needsUpdate = true; }).catch(() => {});
   const banner = new THREE.Mesh(new THREE.BoxGeometry(w * 2, 2.6, 0.4), [postMat, postMat, postMat, postMat, new THREE.MeshStandardMaterial({ map: tex }), new THREE.MeshStandardMaterial({ map: tex })]);
   banner.position.set(0, 8, 0); banner.castShadow = true; g.add(banner);
   g.position.set(p.x, 0, p.z);

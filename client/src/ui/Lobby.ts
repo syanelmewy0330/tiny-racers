@@ -17,7 +17,7 @@ export function showLobby(parent: HTMLElement, s: ColyseusSession, onLeave: () =
       <p class="notice" data-notice hidden></p>
       <p class="sub" data-note></p>
       <p class="sub" data-net></p>
-      <div class="row"><button class="btn" data-start>Start race</button><button class="btn" data-ready>I'm ready</button><button class="btn ghost" data-leave>Leave room</button></div>
+      <div class="row"><button class="btn" data-start>Start race</button><button class="btn" data-ready>I'm ready</button><button class="btn coral" data-leave>Leave room</button></div>
     </div>`;
   parent.append(screen);
   const q = <T extends HTMLElement>(sel: string) => screen.querySelector(sel) as T;
@@ -51,7 +51,7 @@ export function showLobby(parent: HTMLElement, s: ColyseusSession, onLeave: () =
       const who = document.createElement('span'); who.className = 'who'; who.textContent = ch.name;
       const status = document.createElement('span'); status.className = 'status';
       if (!p.connected) { status.textContent = 'Reconnecting…'; status.classList.add('away'); }
-      else if (p.id === w.hostId) status.textContent = 'Host';
+      else if (p.id === w.hostId) { status.textContent = 'Host'; status.classList.add('host'); }
       else if (p.ready) { status.textContent = 'Ready ✓'; status.classList.add('ready'); }
       else status.textContent = 'Not ready';
       li.append(face, label, who, status); list.append(li);
