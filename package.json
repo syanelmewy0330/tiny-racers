@@ -3,10 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "description": "Tiny Racers: a cute 3D multiplayer kart racing game for the browser.",
-  "workspaces": ["client"],
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
+    "play": "node scripts/play.mjs",
     "dev": "npm run dev --workspace client",
+    "server": "npm run dev --workspace server",
     "build": "npm run build --workspace client",
-    "typecheck": "npm run typecheck --workspace client"
+    "typecheck": "npm run typecheck --workspace client && npm run typecheck --workspace server"
   }
 }

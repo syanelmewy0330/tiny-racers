@@ -33,6 +33,7 @@ export class KartController {
   /** Set by Game when a mini-turbo or pad fires, for the HUD toast. */
   onBoost?: (kind: 'pad' | 'mini' | 'super') => void;
   private t: ReturnType<typeof tuning>;
+  setCharacter(ch: CharacterDef) { this.t = tuning(ch); }
   private driftHeld = false;
 
   constructor(world: RAPIER.World, ch: CharacterDef) {

@@ -1,11 +1,17 @@
 import { LAPS } from '@shared/constants';
 import { formatTime } from '../game/RaceTracker';
+import { characterById } from '@shared/characters';
+import type { ResultRow } from '@shared/protocol';
+
+const PRACTICE_RESULTS = `<h2>Finished!</h2><div class="time" data-total></div><ol class="laps" data-laps></ol>
+  <div class="row" style="justify-content:center"><button class="btn" data-again>Race again</button></div>`;
 
 const el = (html: string) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild as HTMLElement; };
 
 /** Race overlay: lap, time, speedometer, drift meter, countdown and results. */
 export class Hud {
   readonly root: HTMLElement;
+  private place!: HTMLElement;
   private lap: HTMLElement; private time: HTMLElement; private speed: HTMLElement; private arc: SVGPathElement;
   private driftBar: HTMLElement; private big: HTMLElement; private toast: HTMLElement; private results: HTMLElement;
   private toastTimer = 0;
@@ -13,7 +19,7 @@ export class Hud {
 
   constructor(parent: HTMLElement) {
     this.root = el(`<div class="hud" hidden>
-      <div class="chips"><span class="chip" data-lap>Lap 1/${LAPS}</span><span class="chip" data-time>0:00.00</span></div>
+      <div class="chips"><span class="chip" data-lap>Lap 1/${LAPS}</span><span class="chip" data-time>0:00.00</span><span class="chip" data-place hidden></span></div>
       <div class="speedo">
         <svg viewBox="0 0 100 100" aria-hidden="true">
           <circle cx="50" cy="50" r="46" fill="#fffaf3" stroke="#2a1e3f" stroke-width="3"/>
@@ -30,13 +36,10 @@ export class Hud {
       <div class="toast" data-toast hidden></div>
       <div class="big" data-big hidden></div>
     </div>`);
-    this.results = el(`<div class="results" hidden><div class="panel">
-      <h2>Finished!</h2><div class="time" data-total></div><ol class="laps" data-laps></ol>
-      <div class="row" style="justify-content:center"><button class="btn" data-again>Race again</button></div>
-    </div></div>`);
+    this.results = el(`<div class="results" hidden><div class="panel">${PRACTICE_RESULTS}</div></div>`);
     parent.append(this.root, this.results);
     const q = (s: string) => this.root.querySelector(s) as HTMLElement;
-    this.lap = q('[data-lap]'); this.time = q('[data-time]'); this.speed = q('[data-speed]');
+    this.lap = q('[data-lap]'); this.place = q('[data-place]'); this.time = q('[data-time]'); this.speed = q('[data-speed]');
     this.arc = this.root.querySelector('[data-arc]') as SVGPathElement;
     this.driftBar = q('[data-drift]'); this.big = q('[data-big]'); this.toast = q('[data-toast]');
     (this.results.querySelector('[data-again]') as HTMLElement).onclick = () => this.onRestart?.();
@@ -44,7 +47,8 @@ export class Hud {
 
   show(on: boolean) { this.root.hidden = !on; if (!on) this.results.hidden = true; }
 
-  update(dt: number, d: { lap: number; time: number; kmh: number; drift: number; driftLevel: number; countdown: number | null }) {
+  update(dt: number, d: { lap: number; time: number; kmh: number; drift: number; driftLevel: number; countdown: number | null; place?: string | null }) {
+    this.place.hidden = !d.place; if (d.place) this.place.textContent = d.place;
     this.lap.textContent = `Lap ${d.lap}/${LAPS}`;
     this.time.textContent = formatTime(d.time);
     this.speed.textContent = String(Math.round(Math.abs(d.kmh)));
@@ -60,6 +64,8 @@ export class Hud {
   say(text: string, seconds = 1.2) { this.toast.textContent = text; this.toast.hidden = false; this.toastTimer = seconds; }
 
   showResults(total: number, laps: number[]) {
+    (this.results.querySelector('.panel') as HTMLElement).innerHTML = PRACTICE_RESULTS;
+    (this.results.querySelector('[data-again]') as HTMLElement).onclick = () => this.onRestart?.();
     (this.results.querySelector('[data-total]') as HTMLElement).textContent = formatTime(total);
     const list = this.results.querySelector('[data-laps]') as HTMLElement; list.textContent = '';
     laps.forEach((t, i) => { const li = document.createElement('li'); li.textContent = `Lap ${i + 1}  ${formatTime(t)}`; list.append(li); });
@@ -67,4 +73,25 @@ export class Hud {
     (this.results.querySelector('[data-again]') as HTMLElement).focus();
   }
   hideResults() { this.results.hidden = true; }
+
+  /** Online results from the server: everyone's place and time, with Rematch for the host. */
+  showOnlineResults(rows: ResultRow[], me: string, isHost: boolean, rematch: () => void, leave: () => void) {
+    const panel = this.results.querySelector('.panel') as HTMLElement;
+    const mine = rows.find((r) => r.id === me);
+    panel.innerHTML = `<h2>${mine && mine.place === 1 ? 'You win!' : 'Race results'}</h2><ol class="laps" data-rows></ol>
+      <p class="sub" data-wait></p><div class="row" style="justify-content:center"></div>`;
+    const list = panel.querySelector('[data-rows]') as HTMLElement;
+    for (const r of rows) {
+      const li = document.createElement('li');
+      const dot = document.createElement('span');
+      dot.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;border:2px solid #2a1e3f;background:#${characterById(r.character).color.toString(16).padStart(6, '0')}`;
+      li.append(dot, `${r.place}. ${r.name}${r.id === me ? ' (you)' : ''}  ${r.time === null ? 'did not finish' : formatTime(r.time / 1000)}`);
+      list.append(li);
+    }
+    const row = panel.querySelector('.row') as HTMLElement;
+    if (isHost) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'Rematch'; b.onclick = rematch; row.append(b); }
+    else (panel.querySelector('[data-wait]') as HTMLElement).textContent = 'Waiting for the host to start a rematch…';
+    const l = document.createElement('button'); l.className = 'btn ghost'; l.textContent = 'Leave room'; l.onclick = leave; row.append(l);
+    this.results.hidden = false;
+  }
 }

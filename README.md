@@ -2,7 +2,7 @@
 
 A cute 3D arcade kart racing game for the browser, built with Vite, TypeScript, Three.js and Rapier physics.
 
-**Current milestone: 1, first playable kart.** One kart, one track (Meadow Loop), 3 laps, practice mode.
+**Current milestone: 2, two computers racing together.** Practice alone, or create a room, share its code and race a friend live. The server referees the race: countdown, laps, places and results.
 
 ## Run it on Windows
 
@@ -31,6 +31,26 @@ Next time you only need `cd $HOME\Documents\tiny-racers` and `npm run dev`. To g
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
+
+## Race a friend (two computers on the same Wi-Fi)
+
+On **your** computer (the host), in PowerShell:
+
+```powershell
+cd $HOME\Documents\tiny-racers
+git pull
+npm install
+npm run play
+```
+
+This starts the race server and the game together, and prints two addresses. If Windows asks whether to allow Node.js on the network, click **Allow** (private networks).
+
+1. On your computer, the game opens. Type your name and click **Create room**. You get a 5-letter code.
+2. On the **other** computer, open a browser and go to the "another computer" address it printed, like `http://192.168.1.23:5173`. That computer doesn't need to install anything.
+3. Your friend types their name and the code, then clicks **Join**. You both see each other in the room.
+4. You (the host) click **Start race**. After the race, click **Rematch** to go again.
+
+Different houses or internet connections need the server online. That's planned for milestone 3.
 
 ## Controls
 
@@ -69,7 +89,15 @@ tiny-racers/
     characters.ts         Bubbles, Taco, Nimbus, Peanut (stats and abilities)
     tracks/meadowLoop.ts  the track's centre line, width and boost pads
     trackMath.ts          lap and progress maths
-  server/                 multiplayer server (milestone 2)
+      game/RemoteKarts.ts the other racers: smooth movement, name tags, bumping
+      ui/TitleScreen.ts   practice, create room, join room
+      ui/Lobby.ts         waiting room with the invite code
+      net/ColyseusSession.ts talks to the race server
+  server/src/
+    index.ts              starts the Colyseus server on port 2567
+    RaceRoom.ts           one race: players, countdown, laps, cheat checks, results
+  shared/src/protocol.ts  the messages the game and server exchange
+  scripts/play.mjs        npm run play: server + game in one window
 ```
 
 Design notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -77,7 +105,9 @@ Design notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Useful commands
 
 ```powershell
-npm run dev        # play locally
+npm run play       # race server + game together (use this for multiplayer)
+npm run dev        # only the game (practice works without the server)
+npm run server     # only the race server
 npm run build      # check types and make a production build in client/dist
 npm run typecheck  # only check the TypeScript
 ```

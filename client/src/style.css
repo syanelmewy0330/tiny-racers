@@ -67,3 +67,18 @@ kbd { font-family: var(--body); font-weight: 800; background: #fff; border: 2px 
 .results .panel { width: min(440px, 100%); text-align: center; }
 .results .time { font-family: var(--display); font-weight: 800; font-size: 3rem; font-variant-numeric: tabular-nums; }
 .laps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* ---------- online ---------- */
+.field { display: flex; flex-direction: column; gap: 4px; font-weight: 800; font-size: .85rem; }
+.field input, .code-in { font: inherit; font-weight: 800; font-size: 1.05rem; padding: 9px 12px; border: 3px solid var(--ink); border-radius: 12px; background: #fff; color: var(--ink); min-width: 0; }
+.code-in { width: 7.5em; text-transform: uppercase; letter-spacing: .15em; flex: 1; }
+.or { color: var(--muted); font-weight: 800; }
+details summary { cursor: pointer; font-weight: 800; color: var(--muted); }
+details[open] { display: flex; flex-direction: column; gap: 6px; }
+.error { margin: 0; color: #b0283f; font-weight: 800; }
+.btn:disabled { opacity: .5; cursor: wait; }
+.bigcode { font-family: var(--display); font-weight: 800; font-size: 3.4rem; letter-spacing: .18em; text-align: center; background: #fff;
+  border: 3px dashed var(--ink); border-radius: 18px; user-select: all; }
+.players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.players li { display: flex; align-items: center; gap: 10px; background: #fff; border: 2px solid #e5dcef; border-radius: 12px; padding: 8px 12px; font-weight: 800; }
+.players .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }

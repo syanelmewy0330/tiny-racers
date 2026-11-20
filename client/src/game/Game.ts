@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { PHYSICS_HZ } from '@shared/constants';
 import { characterById } from '@shared/characters';
+import type { PlayerView } from '@shared/protocol';
 import { MEADOW_LOOP } from '@shared/tracks/meadowLoop';
 import { yawAt } from '@shared/trackMath';
 import { Input } from './Input';
@@ -13,6 +14,8 @@ import { CameraRig } from './CameraRig';
 import { RaceTracker } from './RaceTracker';
 import { Hud } from '../ui/Hud';
 import { OfflineSession, type RaceSession } from '../net/Network';
+import type { ColyseusSession } from '../net/ColyseusSession';
+import { RemoteKarts } from './RemoteKarts';
 
 const STEP = 1 / PHYSICS_HZ;
 const KART_RADIUS = 0.75;
@@ -35,6 +38,12 @@ export class Game {
   private acc = 0;
   private time = 0;
   private mode: 'title' | 'race' = 'title';
+  private remotes: RemoteKarts;
+  private online: ColyseusSession | null = null;
+  private meView: PlayerView | null = null;
+  private characterId = 'bubbles';
+  /** Called when an online room closes unexpectedly, or the player leaves it. */
+  onLeftRoom?: (reason: string | null) => void;
   private wentGo = false;
   private sendTimer = 0;
   readonly hud: Hud;
@@ -56,32 +65,86 @@ export class Game {
     this.model = new KartModel(ch);
     this.scene.add(this.model.root);
     this.rig = new CameraRig(this.camera);
+    this.remotes = new RemoteKarts(this.scene, this.world);
     this.race = new RaceTracker(this.track.path);
 
     this.hud = new Hud(uiRoot);
     this.hud.onRestart = () => this.startRace();
     this.kart.onBoost = (k) => this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!');
     this.race.onLap = (lap) => this.hud.say(lap === 3 ? 'Final lap!' : `Lap ${lap}`, 1.6);
-    this.race.onFinish = () => this.hud.showResults(this.race.raceTime, this.race.lapTimes);
+    this.race.onFinish = () => { if (!this.online) this.hud.showResults(this.race.raceTime, this.race.lapTimes); };
 
-    this.placeOnGrid();
+    this.placeOnGrid(0);
     window.addEventListener('resize', () => this.resize());
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
-  /** Called by the title screen's Play button, and by "Race again". */
+  /** Practice on your own: the title screen's Practice button, and "Race again". */
   startRace() {
+    if (this.online) this.leaveRoom();
+    this.setCharacter('bubbles');
     this.mode = 'race';
     this.hud.show(true); this.hud.hideResults();
-    this.placeOnGrid();
+    this.placeOnGrid(0);
     this.wentGo = false;
     this.rig.snap();
   }
 
-  private placeOnGrid() {
-    const N = this.track.path.pts.length, back = 12, i = (N - back) % N, p = this.track.path.pts[i];
-    this.kart.placeAt(p.x, p.z, yawAt(this.track.path, i));
+  /** Online: hook the game up to a race room. The server decides when races start. */
+  attachRoom(s: ColyseusSession) {
+    this.online = s; this.session = s;
+    s.events = {
+      world: (w) => {
+        this.meView = w.players.find((p) => p.id === s.me) ?? null;
+        if (this.meView && this.meView.character !== this.characterId) this.setCharacter(this.meView.character);
+        if (this.mode === 'race') this.remotes.sync(w.players, s.me, this.time);
+      },
+      raceStart: (d) => {
+        this.mode = 'race';
+        this.hud.show(true); this.hud.hideResults();
+        this.placeOnGrid(d.grid[s.me] ?? 0);
+        this.race.countdown = d.countdown + 30;   // the server says GO, not our own timer
+        this.countdownEndsAt = this.time + d.countdown;
+        this.wentGo = false; this.rig.snap();
+        this.onRaceStarted?.();
+      },
+      go: () => { this.race.phase = 'racing'; this.race.countdown = 0; },
+      correct: (d) => this.kart.placeAt(d.x, d.z, d.yaw),
+      finish: (d) => { if (d.id === s.me) { this.race.phase = 'finished'; this.hud.say(`You finished ${ordinal(d.place)}!`, 3); } },
+      results: (rows) => this.hud.showOnlineResults(rows, s.me, s.isHost, () => s.start(), () => this.leaveRoom()),
+      closed: (reason) => this.leaveRoom(reason),
+    };
+  }
+
+  /** Called by the lobby when the race begins, so it can hide itself. */
+  onRaceStarted?: () => void;
+  private countdownEndsAt = 0;
+
+  leaveRoom(reason: string | null = null) {
+    if (!this.online) return;
+    this.online.leave();
+    this.online = null; this.session = new OfflineSession(); this.meView = null;
+    this.remotes.clear();
+    this.mode = 'title'; this.hud.show(false);
+    this.onLeftRoom?.(reason);
+  }
+
+  private setCharacter(id: string) {
+    if (id === this.characterId) return;
+    this.characterId = id;
+    const ch = characterById(id);
+    this.scene.remove(this.model.root);
+    this.model = new KartModel(ch);
+    this.scene.add(this.model.root);
+    this.kart.setCharacter(ch);
+  }
+
+  /** Start grid: two columns behind the start line, by slot number (same formula as the server). */
+  private placeOnGrid(slot: number) {
+    const N = this.track.path.pts.length, back = 12 + Math.floor(slot / 2) * 6, i = (N - back) % N, p = this.track.path.pts[i];
+    const side = this.track.side(i), off = (slot % 2 ? -1 : 1) * 2.8;
+    this.kart.placeAt(p.x + side.x * off, p.z + side.z * off, yawAt(this.track.path, i));
     this.race.reset(i, -back);
   }
 
@@ -115,6 +178,7 @@ export class Game {
 
     const locked = this.mode !== 'race' || this.race.phase !== 'racing';
     this.kart.applyInput(input, STEP, locked);
+    this.remotes.update(STEP, this.time);
     this.world.step();
     this.kart.syncFromPhysics();
     if (this.kart.body.translation().y < -5) this.respawn();
@@ -144,10 +208,13 @@ export class Game {
       this.rig.update(dt, target, this.kart.yaw, speed);
       const counting = this.race.phase === 'countdown';
       if (!counting && !this.wentGo) { this.wentGo = true; this.hud.flashGo(); }
+      const players = this.online?.latest?.players.length ?? 1;
       this.hud.update(dt, {
-        lap: this.race.lap, time: this.race.raceTime, kmh: speed * 3.6,
+        lap: this.online && this.meView ? this.meView.lap : this.race.lap,
+        time: this.race.raceTime, kmh: speed * 3.6,
         drift: this.kart.driftCharge, driftLevel: this.kart.driftLevel,
-        countdown: counting ? this.race.countdown : null,
+        countdown: counting ? (this.online ? Math.max(0.01, this.countdownEndsAt - this.time) : this.race.countdown) : null,
+        place: this.online && this.meView ? `${ordinal(this.meView.place)} / ${players}` : null,
       });
       this.sendTimer += dt;
       if (this.sendTimer > 0.05) { this.sendTimer = 0; this.session.sendSnapshot(this.kart.snapshot()); }
@@ -155,3 +222,5 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   }
 }
+
+export const ordinal = (n: number) => n + (['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : n % 10] ?? 'th');

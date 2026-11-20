@@ -1,0 +1,160 @@
+import { Room, type Client } from '@colyseus/core';
+import { MAX_PLAYERS, LAPS, COUNTDOWN_SECONDS } from '../../shared/src/constants.ts';
+import { CHARACTERS } from '../../shared/src/characters.ts';
+import { buildPath, nearest, indexDelta } from '../../shared/src/trackMath.ts';
+import { MEADOW_LOOP } from '../../shared/src/tracks/meadowLoop.ts';
+import type { KartSnapshot } from '../../shared/src/types.ts';
+import type { RoomPhase, WorldMessage, PlayerView, ResultRow } from '../../shared/src/protocol.ts';
+
+const PATH = buildPath(MEADOW_LOOP, 1);
+const N = PATH.pts.length;
+const MAX_SPEED = 62;            // m/s; faster than any legal boost, so only cheats or glitches exceed it
+const FINISH_GRACE_MS = 30_000;  // after the winner finishes, others get this long
+const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+interface Player {
+  id: string;
+  name: string;
+  character: string;
+  slot: number;
+  snap: KartSnapshot;
+  lastSnapAt: number;
+  index: number;
+  progress: number;
+  finishedAt: number | null;   // race ms, decided by the server
+}
+
+/**
+ * One race lobby. The server is the referee: it runs the countdown, counts laps
+ * from the positions players report (rejecting impossible jumps), and decides
+ * finishing order and results. Players only send where their kart is.
+ */
+export class RaceRoom extends Room {
+  maxClients = MAX_PLAYERS;
+  private players = new Map<string, Player>();
+  private phase: RoomPhase = 'lobby';
+  private hostId = '';
+  private raceStartedAt = 0;
+  private raceId = 0;
+  private firstFinishAt = 0;
+
+  onCreate() {
+    this.roomId = Array.from({ length: 5 }, () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join('');
+    this.autoDispose = true;
+
+    this.onMessage('start', (client: Client) => this.startRace(client));
+    this.onMessage('snap', (client: Client, msg: unknown) => this.onSnap(client, msg));
+    this.clock.setInterval(() => this.tick(), 50);   // 20 updates a second
+  }
+
+  onJoin(client: Client, options: { name?: unknown } = {}) {
+    if (this.phase !== 'lobby' && this.phase !== 'results') throw new Error('race_in_progress');
+    const name = String(options.name ?? 'Racer').replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 14) || 'Racer';
+    const used = new Set([...this.players.values()].map((p) => p.slot));
+    let slot = 0; while (used.has(slot)) slot++;
+    this.players.set(client.sessionId, {
+      id: client.sessionId, name, character: CHARACTERS[slot % CHARACTERS.length].id, slot,
+      snap: { x: 0, y: 0, z: 0, yaw: 0, speed: 0, drift: 0 }, lastSnapAt: 0, index: 0, progress: 0, finishedAt: null,
+    });
+    if (!this.hostId) this.hostId = client.sessionId;
+    client.send('welcome', { you: client.sessionId, code: this.roomId });
+    console.log(`  ${name} joined room ${this.roomId} (${this.players.size}/${MAX_PLAYERS})`);
+  }
+
+  onLeave(client: Client) {
+    const p = this.players.get(client.sessionId);
+    this.players.delete(client.sessionId);
+    if (this.hostId === client.sessionId) this.hostId = [...this.players.keys()][0] ?? '';
+    if (p) console.log(`  ${p.name} left room ${this.roomId}`);
+    if (this.phase === 'racing') this.checkRaceOver();
+    if (this.players.size > 0 && this.phase !== 'racing' && this.phase !== 'countdown') this.unlock();
+  }
+
+  private startRace(client: Client) {
+    if (client.sessionId !== this.hostId) return;
+    if (this.phase !== 'lobby' && this.phase !== 'results') return;
+    this.raceId++;
+    this.phase = 'countdown';
+    this.lock();   // nobody joins mid-race
+    const back = 12;
+    for (const p of this.players.values()) {
+      p.index = (N - back - Math.floor(p.slot / 2) * 6 + N) % N;
+      p.progress = -(back + Math.floor(p.slot / 2) * 6);
+      p.finishedAt = null; p.lastSnapAt = 0;
+    }
+    this.broadcast('race:start', { raceId: this.raceId, countdown: COUNTDOWN_SECONDS, grid: Object.fromEntries([...this.players.values()].map((p) => [p.id, p.slot])) });
+    this.clock.setTimeout(() => {
+      if (this.phase !== 'countdown') return;
+      this.phase = 'racing'; this.raceStartedAt = this.clock.currentTime; this.firstFinishAt = 0;
+      this.broadcast('race:go', { raceId: this.raceId });
+    }, COUNTDOWN_SECONDS * 1000);
+  }
+
+  private onSnap(client: Client, msg: unknown) {
+    const p = this.players.get(client.sessionId);
+    if (!p || typeof msg !== 'object' || msg === null) return;
+    const m = msg as Record<string, unknown>;
+    const nums = ['x', 'y', 'z', 'yaw', 'speed'].map((k) => Number(m[k]));
+    if (nums.some((v) => !Number.isFinite(v))) return;
+    const [x, y, z, yaw, speed] = nums;
+    const drift = (m.drift === 1 || m.drift === -1 ? m.drift : 0) as -1 | 0 | 1;
+    const now = this.clock.currentTime;
+
+    if (this.phase === 'racing' && p.finishedAt === null && p.lastSnapAt > 0) {
+      const dt = Math.max(0.03, (now - p.lastSnapAt) / 1000);
+      const moved = Math.hypot(x - p.snap.x, z - p.snap.z);
+      const near = nearest(PATH, x, z, p.index);
+      const isRespawn = near.dist < 1.5 && Math.abs(indexDelta(PATH, p.index, near.i)) < 40;
+      if (moved / dt > MAX_SPEED && !isRespawn) {
+        client.send('correct', { x: p.snap.x, z: p.snap.z, yaw: p.snap.yaw });  // impossible jump: put them back
+        return;
+      }
+    }
+    p.snap = { x, y, z, yaw, speed, drift };
+    p.lastSnapAt = now;
+
+    if (this.phase === 'racing' && p.finishedAt === null) {
+      const near = nearest(PATH, x, z, p.index);
+      p.progress += indexDelta(PATH, p.index, near.i);
+      p.index = near.i;
+      if (p.progress >= LAPS * N) {
+        p.finishedAt = now - this.raceStartedAt;
+        if (!this.firstFinishAt) this.firstFinishAt = now;
+        this.broadcast('race:finish', { id: p.id, time: p.finishedAt, place: this.ranking().findIndex((r) => r.id === p.id) + 1 });
+        this.checkRaceOver();
+      }
+    }
+  }
+
+  private ranking(): Player[] {
+    return [...this.players.values()].sort((a, b) => {
+      if (a.finishedAt !== null && b.finishedAt !== null) return a.finishedAt - b.finishedAt;
+      if (a.finishedAt !== null) return -1;
+      if (b.finishedAt !== null) return 1;
+      return b.progress - a.progress;
+    });
+  }
+
+  private checkRaceOver() {
+    const all = [...this.players.values()];
+    const everyoneDone = all.length > 0 && all.every((p) => p.finishedAt !== null);
+    const graceOver = this.firstFinishAt > 0 && this.clock.currentTime - this.firstFinishAt > FINISH_GRACE_MS;
+    if (this.phase === 'racing' && (everyoneDone || graceOver)) {
+      this.phase = 'results';
+      const results: ResultRow[] = this.ranking().map((p, i) => ({ id: p.id, name: p.name, character: p.character, place: i + 1, time: p.finishedAt }));
+      this.broadcast('race:results', { raceId: this.raceId, results });
+      this.unlock();
+    }
+  }
+
+  private tick() {
+    if (this.phase === 'racing') this.checkRaceOver();
+    const order = this.ranking();
+    const players: PlayerView[] = order.map((p, i) => ({
+      id: p.id, name: p.name, character: p.character, slot: p.slot, ...p.snap,
+      lap: Math.min(LAPS, Math.max(1, Math.floor(p.progress / N) + 1)), place: i + 1, finished: p.finishedAt !== null,
+    }));
+    const world: WorldMessage = { phase: this.phase, hostId: this.hostId, code: this.roomId, raceId: this.raceId, players };
+    this.broadcast('world', world);
+  }
+}

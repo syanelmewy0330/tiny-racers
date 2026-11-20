@@ -1,4 +1,7 @@
-# Multiplayer server (milestone 2)
+# Tiny Racers race server
 
-This will be a Node.js + Colyseus server that runs race rooms for up to 8 players.
-It is intentionally empty until milestone 1 (single kart) is approved.
+Node.js + Colyseus. Run it with `npm run server` from the project folder (or `npm run play` to start the game too).
+
+- `src/RaceRoom.ts` is one race room (up to 8 players). Its 5-letter room id is the invitation code.
+- The server is the referee: the host's **Start** begins a 3-second countdown, then the server counts laps from each kart's reported position using `shared/src/trackMath.ts`. Positions that jump faster than any kart can drive are rejected and the kart is sent back. The server decides places, finish times and results.
+- It sends everyone a `world` update 20 times a second with all karts, laps and places.
