@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { characterById } from '@shared/characters';
 import type { PlayerView, ResultRow } from '@shared/protocol';
-import { KartModel } from './KartModel';
+import { createRacerModel, type RacerModel } from './racerModel';
 
 interface Remote {
-  model: KartModel;
+  model: RacerModel;
   body: RAPIER.RigidBody;
   tag: THREE.Sprite;
   target: PlayerView;
@@ -30,7 +30,7 @@ export class RemoteKarts {
       let r = this.karts.get(p.id);
       if (r && r.model.ch.id !== p.character) { this.remove(p.id, r); r = undefined; }   // they picked another racer
       if (!r) {
-        const model = new KartModel(characterById(p.character));
+        const model = createRacerModel(characterById(p.character));
         const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, 0.75, p.z));
         this.world.createCollider(RAPIER.ColliderDesc.ball(0.75).setRestitution(0.4), body);
         const tag = nameTag(p.name);
@@ -72,7 +72,7 @@ export class RemoteKarts {
   clear() { for (const [id, r] of this.karts) this.remove(id, r); }
 
   private remove(id: string, r: Remote) {
-    this.scene.remove(r.model.root);
+    this.scene.remove(r.model.root); r.model.dispose();
     this.world.removeRigidBody(r.body);
     this.karts.delete(id);
   }

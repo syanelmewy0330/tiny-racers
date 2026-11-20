@@ -9,7 +9,8 @@ import { Input } from './Input';
 import { Track } from './Track';
 import { Environment } from './Environment';
 import { KartController } from './KartController';
-import { KartModel } from './KartModel';
+import { createRacerModel, type RacerModel } from './racerModel';
+import { toyEnvironment } from '../models/toy';
 import { CameraRig } from './CameraRig';
 import { RaceTracker } from './RaceTracker';
 import { Hud } from '../ui/Hud';
@@ -30,7 +31,7 @@ export class Game {
   private track: Track;
   private env: Environment;
   private kart: KartController;
-  private model: KartModel;
+  private model: RacerModel;
   private rig: CameraRig;
   private race: RaceTracker;
   private session: RaceSession = new OfflineSession();
@@ -58,13 +59,14 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
 
+    toyEnvironment(this.renderer, this.scene, 0.35);
     this.track = new Track(MEADOW_LOOP, this.world);
     this.scene.add(this.track.group);
     this.env = new Environment(this.scene, this.world, this.track);
 
     const ch = characterById('bubbles');
     this.kart = new KartController(this.world, ch);
-    this.model = new KartModel(ch);
+    this.model = createRacerModel(ch);
     this.scene.add(this.model.root);
     this.rig = new CameraRig(this.camera);
     this.remotes = new RemoteKarts(this.scene, this.world);
@@ -72,7 +74,7 @@ export class Game {
 
     this.hud = new Hud(uiRoot);
     this.hud.onRestart = () => this.startRace();
-    this.kart.onBoost = (k) => this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!');
+    this.kart.onBoost = (k) => { this.model.react(); this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!'); };
     this.race.onLap = (lap) => this.hud.say(lap === 3 ? 'Final lap!' : `Lap ${lap}`, 1.6);
     this.race.onFinish = () => {
       if (this.online) return;
@@ -157,8 +159,8 @@ export class Game {
     if (id === this.characterId) return;
     this.characterId = id;
     const ch = characterById(id);
-    this.scene.remove(this.model.root);
-    this.model = new KartModel(ch);
+    this.scene.remove(this.model.root); this.model.dispose();
+    this.model = createRacerModel(ch);
     this.scene.add(this.model.root);
     this.kart.setCharacter(ch);
   }
