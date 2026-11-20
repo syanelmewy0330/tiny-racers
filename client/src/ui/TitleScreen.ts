@@ -40,6 +40,8 @@ export function showTitle(parent: HTMLElement, h: { onPractice: (character: stri
         <span><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd> steer</span>
         <span><kbd>Space</kbd> drift</span>
         <span><kbd>R</kbd> reset kart</span>
+        <span><kbd>Esc</kbd> pause</span>
+        <span>Controllers work too</span>
       </div>
     </div>`;
   parent.append(screen);

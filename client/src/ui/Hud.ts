@@ -381,6 +381,7 @@ export class Hud {
   }
 
   showResults(total: number, laps: number[]) {
+    this.peekHelp(false);
     this.renderResults('FINISHED!', formatTime(total), laps.map((t, i) => ({ pos: i + 1, name: `Lap ${i + 1}`, time: formatTime(t), plain: true })), '',
       [{ label: 'RACE AGAIN', kind: 'go', act: () => this.onRestart?.() }, { label: 'MAIN MENU', kind: 'alt', act: () => this.onMenu?.() }]);
   }
@@ -388,6 +389,7 @@ export class Hud {
 
   /** Online results from the server: everyone's place and time, with Rematch for the host. */
   showOnlineResults(rows: ResultRow[], me: string, isHost: boolean, rematch: () => void, leave: () => void) {
+    this.peekHelp(false);
     const mine = rows.find((r) => r.id === me);
     const buttons: { label: string; kind: 'go' | 'alt'; act: () => void }[] = [];
     if (isHost) buttons.push({ label: 'REMATCH', kind: 'go', act: rematch });
