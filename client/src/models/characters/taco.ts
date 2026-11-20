@@ -1,11 +1,11 @@
-import { G, blob, cyl, eye, group, part, tube, vinyl } from '../toy';
+import { G, blob, cyl, eye, group, part, tube, vinyl, INK } from '../toy';
 import { toyBody, type CharacterRig } from './rig';
 
-const FAWN = 0xdcb88c, MASK = 0x35292c, CAP = 0xd9403f, PHONES = 0xd9403f;
+const FAWN = 0xe8c59a, MASK = 0x3a2b2e, CAP = 0xe8473f, PHONES = 0xff5c8a;
 
 /** Taco: round-faced pug with sleepy eyes, a backwards red cap and big headphones. */
 export function buildTaco(): CharacterRig {
-  const rig = toyBody({ outfit: 0xc93a3c, trim: 0xf3e6cf, chest: FAWN, hands: FAWN, feet: MASK });
+  const rig = toyBody({ outfit: 0xe8473f, trim: 0xfff1d6, chest: FAWN, hands: FAWN, feet: MASK });
   rig.torso.scale.set(1.08, 1, 1.05);   // a well-fed pug
   const h = rig.head, fur = vinyl(FAWN, 0.6), mask = vinyl(MASK, 0.5);
 
@@ -30,19 +30,18 @@ export function buildTaco(): CharacterRig {
   h.add(tongue);
 
   // red baseball cap, worn backwards
-  const cap = group([0, 0.6, -0.05]); cap.rotation.x = -0.2;
-  cap.add(part(G.halfSphere(), vinyl(CAP, 0.45), [0, 0, 0], [0.46, 0.32, 0.46]));
+  const cap = group([0, 0.52, -0.03]); cap.rotation.x = -0.12;
+  cap.add(part(G.halfSphere(), vinyl(CAP, 0.45), [0, 0, 0], [0.47, 0.36, 0.47]));
   cap.add(blob(vinyl(CAP, 0.45), [0, 0.02, -0.5], [0.3, 0.035, 0.24]));      // brim at the back
   cap.add(blob(vinyl(0xfff1d6), [0, 0.36, 0], 0.05));                         // button
-  cap.add(blob(vinyl(0xf3e6cf), [0, 0.14, -0.43], [0.13, 0.09, 0.03], [0.3, 0, 0]));   // strap badge at the back
+  cap.add(blob(vinyl(0xfff1d6), [0, 0.14, 0.43], [0.13, 0.09, 0.03], [-0.3, 0, 0]));   // badge
   h.add(cap);
 
   // headphones over the cap
-  h.add(part(G.torus(0.53, 0.045, Math.PI), vinyl(0x252638, 0.4), [0, 0.4, 0.02], 1, [0, 0, 0]));
+  h.add(part(G.torus(0.52, 0.04, Math.PI), vinyl(INK, 0.4), [0, 0.4, 0.02], 1, [0, 0, 0]));
   for (const x of [-1, 1]) {
     h.add(cyl(vinyl(PHONES, 0.35), [x * 0.5, 0.4, 0.02], 0.15, 0.12, [0, 0, Math.PI / 2]));
-    h.add(cyl(vinyl(0x252638, 0.6), [x * 0.45, 0.4, 0.02], 0.13, 0.05, [0, 0, Math.PI / 2]));
-    h.add(cyl(vinyl(0xf3e6cf, 0.4), [x * 0.565, 0.4, 0.02], 0.06, 0.01, [0, 0, Math.PI / 2]));
+    h.add(cyl(vinyl(INK, 0.6), [x * 0.44, 0.4, 0.02], 0.12, 0.04, [0, 0, Math.PI / 2]));
   }
 
   // little curly tail

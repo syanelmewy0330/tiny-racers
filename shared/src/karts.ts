@@ -35,10 +35,10 @@ export const KARTS: KartDef[] = [
     description: 'A tiny food truck with a big engine. Slow to get going, hard to catch once it is rolling.',
     mods: { speed: 1, acceleration: -1, handling: 0 },
     paints: [
-      { name: 'Hot Sauce', body: 0xd9403f, trim: 0x252638 },
-      { name: 'Mustard', body: 0xe5a94b, trim: 0x252638 },
-      { name: 'Sage Salad', body: 0x6e9b91, trim: 0x252638 },
-      { name: 'Midnight Diner', body: 0x30324a, trim: 0xd9403f },
+      { name: 'Hot Sauce', body: 0xe8473f, trim: 0xfff1d6 },
+      { name: 'Mustard', body: 0xf2b632, trim: 0x8a3b26 },
+      { name: 'Avocado', body: 0x8cc84b, trim: 0x4a3426 },
+      { name: 'Blueberry', body: 0x5b7fe0, trim: 0xfff1d6 },
     ],
   },
   {
@@ -46,10 +46,10 @@ export const KARTS: KartDef[] = [
     description: 'Clean lines, glowing blue circuits and perfectly calculated cornering.',
     mods: { speed: -1, acceleration: 0, handling: 1 },
     paints: [
-      { name: 'Lab White', body: 0xeef1f7, trim: 0x2f7de1 },
-      { name: 'Slate', body: 0x8790b8, trim: 0x63d2ff },
-      { name: 'Graphite', body: 0x30324a, trim: 0x63d2ff },
-      { name: 'Sage Circuit', body: 0x6e9b91, trim: 0xeef1f7 },
+      { name: 'Lab Coat', body: 0xf3f5fb, trim: 0x3d8bff },
+      { name: 'Lavender', body: 0xb7a3f5, trim: 0x3d8bff },
+      { name: 'Graphite', body: 0x4a4f63, trim: 0x55e0ff },
+      { name: 'Sky Grid', body: 0x9fd8ff, trim: 0x2f4bd6 },
     ],
   },
   {
@@ -57,10 +57,10 @@ export const KARTS: KartDef[] = [
     description: 'Huge wing, huge exhausts, held together with tape. Very fast, a little wild.',
     mods: { speed: 1, acceleration: 0, handling: -1 },
     paints: [
-      { name: 'Wildfire', body: 0xee7a2a, trim: 0x252638 },
-      { name: 'Coral Chaos', body: 0xf05b65, trim: 0x252638 },
-      { name: 'Midnight Menace', body: 0x30324a, trim: 0xee7a2a },
-      { name: 'Amber Alert', body: 0xe5a94b, trim: 0x252638 },
+      { name: 'Wildfire', body: 0xf07a2a, trim: 0x2c2a35 },
+      { name: 'Toxic Lime', body: 0xb8e03c, trim: 0x2c2a35 },
+      { name: 'Chaos Teal', body: 0x2fb5a3, trim: 0xf07a2a },
+      { name: 'Grape Soda', body: 0x8b4fd8, trim: 0xffd23f },
     ],
   },
 ];

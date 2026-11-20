@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { G, blob, cone, cyl, eye, group, part, vinyl, glass, mouth, INK } from '../toy';
 import { toyBody, type CharacterRig } from './rig';
 
-const WOOL = 0xf7f4ee, FACE = 0xead3bd, SWEATER = 0x3f5fa8;
+const WOOL = 0xfbf7f0, FACE = 0xf0d9c3, SWEATER = 0x8b7cff;
 
 /** A cloud of wool puffs around a centre. Deterministic, so every Nimbus looks the same. */
 function wool(parent: THREE.Object3D, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, n: number, size: number, skipFront = false) {
@@ -17,8 +17,9 @@ function wool(parent: THREE.Object3D, cx: number, cy: number, cz: number, rx: nu
 
 /** Nimbus: fluffy sheep with round glasses, a pencil behind the ear and a worried look. */
 export function buildNimbus(): CharacterRig {
-  const rig = toyBody({ outfit: SWEATER, trim: 0xffffff, hands: FACE, feet: 0x3b3a4a });
+  const rig = toyBody({ outfit: SWEATER, trim: 0xffffff, hands: FACE, feet: 0x5b5468 });
   const h = rig.head, face = vinyl(FACE, 0.55);
+  wool(rig.torso, 0, 0.3, -0.02, 0.28, 0.25, 0.22, 16, 0.13, true);       // woolly body under the sweater
   rig.torso.add(blob(vinyl(SWEATER, 0.6), [0, 0.28, 0.04], [0.31, 0.32, 0.28]));
   h.add(blob(vinyl(WOOL, 0.75), [0, 0.42, -0.04], [0.44, 0.42, 0.4]));     // wool head core
   wool(h, 0, 0.47, -0.04, 0.42, 0.4, 0.38, 34, 0.15, true);
@@ -43,17 +44,17 @@ export function buildNimbus(): CharacterRig {
   h.add(cyl(vinyl(INK, 0.35), [0, 0.43, 0.48], 0.015, 0.06, [0, 0, Math.PI / 2], 6));   // bridge
   // pencil behind the ear
   const pencil = group([-0.38, 0.6, 0.06]); pencil.rotation.set(0.3, 0, -0.9);
-  pencil.add(cyl(vinyl(0xe5a94b, 0.4), [0, 0, 0], 0.035, 0.42, [0, 0, 0], 6));
+  pencil.add(cyl(vinyl(0xffc84a, 0.4), [0, 0, 0], 0.035, 0.42, [0, 0, 0], 6));
   pencil.add(cone(vinyl(0xf3d9b0), [0, 0.25, 0], 0.035, 0.08, [0, 0, 0], 6));
   pencil.add(cone(vinyl(INK), [0, 0.29, 0], 0.012, 0.03, [0, 0, 0], 6));
   pencil.add(cyl(metal_(), [0, -0.22, 0], 0.037, 0.04, [0, 0, 0], 6));
-  pencil.add(cyl(vinyl(0xf05b65), [0, -0.26, 0], 0.035, 0.05, [0, 0, 0], 6));
+  pencil.add(cyl(vinyl(0xff9fd6), [0, -0.26, 0], 0.035, 0.05, [0, 0, 0], 6));
   h.add(pencil);
   // bow tie
-  for (const x of [-1, 1]) rig.torso.add(cone(vinyl(0x4f8fe8, 0.4), [x * 0.07, 0.55, 0.22], 0.06, 0.12, [0, 0, x * Math.PI / 2], 8));
-  rig.torso.add(blob(vinyl(0x4f8fe8, 0.4), [0, 0.55, 0.23], 0.035));
+  for (const x of [-1, 1]) rig.torso.add(cone(vinyl(0x6ccff6, 0.4), [x * 0.07, 0.55, 0.22], 0.06, 0.12, [0, 0, x * Math.PI / 2], 8));
+  rig.torso.add(blob(vinyl(0x6ccff6, 0.4), [0, 0.55, 0.23], 0.035));
   // nervous sweat drop that comes and goes
-  const drop = blob(glass(0x8fd0ff, 0.85), [0.3, 0.6, 0.3], [0.04, 0.06, 0.03]);
+  const drop = blob(glass(0x6ccff6, 0.85), [0.3, 0.6, 0.3], [0.04, 0.06, 0.03]);
   h.add(drop);
   const tail = group([0, 0.2, -0.3]); wool(tail, 0, 0, 0, 0.07, 0.07, 0.07, 6, 0.07); rig.torso.add(tail); rig.tail = tail;
 

@@ -28,8 +28,6 @@ export interface BodyStyle {
   hands: number;            // paws or gloves
   handsMatte?: boolean;     // gloves are fabric
   feet: number;
-  /** Two racing stripes down the front (otherwise a zip). */
-  stripes?: boolean;
 }
 
 /** The shared toy body: round torso, stubby arms, little feet and a neck pivot. */
@@ -42,8 +40,7 @@ export function toyBody(style: BodyStyle): CharacterRig {
   torso.add(part(G.torus(0.2, 0.05), vinyl(style.trim, 0.5), [0, 0.55, 0.0], [1, 1, 1], [Math.PI / 2, 0, 0]));   // collar
   if (style.chest !== undefined) torso.add(blob(vinyl(style.chest), [0, 0.36, 0.2], [0.17, 0.17, 0.12]));
   // racing stripes down the front
-  if (style.stripes) for (const x of [-0.12, 0.12]) torso.add(blob(vinyl(style.trim, 0.5), [x, 0.3, 0.255], [0.035, 0.2, 0.04]));
-  else torso.add(blob(vinyl(style.trim, 0.4), [0, 0.3, 0.285], [0.014, 0.2, 0.02]));
+  for (const x of [-0.12, 0.12]) torso.add(blob(vinyl(style.trim, 0.5), [x, 0.22, 0.25], [0.035, 0.2, 0.05]));
   for (const x of [-0.15, 0.15]) root.add(blob(vinyl(style.feet), [x, 0.04, 0.16], [0.11, 0.08, 0.15]));
 
   const handMat = style.handsMatte ? matte(style.hands) : vinyl(style.hands);
