@@ -5,6 +5,7 @@ import { buildCharacter, type CharacterRig } from '../models/characters';
 import { buildKart, type KartRig } from '../models/karts';
 import { shadows } from '../models/karts/base';
 import { CharacterAnimator, type Mood } from '../models/animator';
+import { materialState, mergeStill, movedSince, snapshot } from '../models/optimize';
 
 const SMOKE = 14;
 
@@ -63,6 +64,44 @@ export class KartModel {
       m.visible = false; this.smoke.push({ m, life: 0, vx: 0, vz: 0 });
     }
     shadows(this.body);
+    if (KartModel.combineParts) this.combineStillParts();
+  }
+
+  /** Off only for testing that combined models look the same. */
+  static combineParts = true;
+
+  /**
+   * Plays the animations briefly off-screen to find the parts that move, then combines
+   * all the other pieces so the racer draws in far fewer calls. Looks identical.
+   */
+  private combineStillParts() {
+    const snap = snapshot(this.body), mats = materialState(this.body);
+    const mood = this.anim.mood;
+    let t = 0;
+    for (const m of ['race', 'win', 'lose'] as Mood[]) {
+      this.anim.setMood(m); this.anim.react();
+      for (let i = 0; i < 150; i++) {
+        t += 1 / 30;
+        const k = i % 50;
+        this.animate(1 / 30, k < 25 ? 18 : 0.5, Math.sin(t * 2), k < 12 ? 1 : k < 25 ? -1 : 0, k % 3, k > 30 && k < 40, t);
+      }
+    }
+    const keep = movedSince(snap), liveMats = mats.changed();
+    const r = this.driver;
+    for (const o of [r.head, r.torso, r.armL, r.armR, r.tail, ...r.eyes, ...r.ears, this.kart.steering, ...this.sparks, ...this.flames]) if (o) keep.add(o);
+    for (const w of this.kart.wheels) { keep.add(w.pivot); keep.add(w.spin); }
+    this.anim.setMood(mood);
+    this.steerSmooth = 0; this.lastSpeed = 0; this.pitch = 0;
+    for (const s of this.smoke) { s.life = 0; s.m.visible = false; }
+    mergeStill(this.body, keep, liveMats);
+    // tiny pieces (eyes, buttons, bolts) don't cast a visible shadow: skip them in the shadow pass
+    this.root.updateMatrixWorld(true);
+    this.body.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.castShadow) return;
+      if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+      if (m.geometry.boundingSphere!.radius * m.matrixWorld.getMaxScaleOnAxis() < 0.07) m.castShadow = false;
+    });
   }
 
   /** Smoke puffs live in the scene, not on the kart. Call after adding root to a scene. */
