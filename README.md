@@ -2,7 +2,7 @@
 
 A cute 3D arcade kart racing game for the browser, built with Vite, TypeScript, Three.js and Rapier physics.
 
-**Current milestone: 2, two computers racing together.** Practice alone, or create a room, share its code and race a friend live. The server referees the race: countdown, laps, places and results.
+**Current milestone: 3, online for everyone.** Up to 8 racers. Press **Quick race** to race anyone online, or **Create private room** and share its code. The server referees the race: countdown, laps, places and results.
 
 ## Run it on Windows
 
@@ -32,7 +32,18 @@ Next time you only need `cd $HOME\Documents\tiny-racers` and `npm run dev`. To g
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
-## Race a friend (two computers on the same Wi-Fi)
+## Put it online (free, on Render)
+
+The repo includes `render.yaml`, so Render knows how to build and run everything as one free web service.
+The server also hands out the game, so there is a single web address to share.
+
+1. Sign up at https://render.com with your GitHub account, and allow Render to see the `tiny-racers` repo.
+2. In Render: **New** → **Blueprint** → pick `tiny-racers` → **Deploy Blueprint**.
+3. When it says **Live**, open its address (like `https://tiny-racers.onrender.com`). Send that link to friends.
+
+Every time new code is pushed to `main`, Render updates the game by itself. On the free plan the server sleeps after 15 minutes without players, so the first visit after a break takes about a minute to wake up.
+
+## Race a friend on your own Wi-Fi (without Render)
 
 On **your** computer (the host), in PowerShell:
 
@@ -50,7 +61,6 @@ This starts the race server and the game together, and prints two addresses. If 
 3. Your friend types their name and the code, then clicks **Join**. You both see each other in the room.
 4. You (the host) click **Start race**. After the race, click **Rematch** to go again.
 
-Different houses or internet connections need the server online. That's planned for milestone 3.
 
 ## Controls
 
@@ -94,7 +104,8 @@ tiny-racers/
       ui/Lobby.ts         waiting room with the invite code
       net/ColyseusSession.ts talks to the race server
   server/src/
-    index.ts              starts the Colyseus server on port 2567
+    index.ts              starts the Colyseus server (port 2567) and serves the built game
+  render.yaml             free hosting setup for Render
     RaceRoom.ts           one race: players, countdown, laps, cheat checks, results
   shared/src/protocol.ts  the messages the game and server exchange
   scripts/play.mjs        npm run play: server + game in one window
@@ -108,6 +119,7 @@ Design notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 npm run play       # race server + game together (use this for multiplayer)
 npm run dev        # only the game (practice works without the server)
 npm run server     # only the race server
+npm start          # what Render runs: the server, also serving the built game
 npm run build      # check types and make a production build in client/dist
 npm run typecheck  # only check the TypeScript
 ```

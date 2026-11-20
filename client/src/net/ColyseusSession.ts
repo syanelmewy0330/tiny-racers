@@ -13,10 +13,14 @@ export interface SessionEvents {
   closed?: (reason: string) => void;
 }
 
-/** Where the race server is. By default: the same computer that serves the game, port 2567. */
+/**
+ * Where the race server is. Online, the server also hands out the game, so it is
+ * the same address. While developing (Vite on port 5173) it is port 2567 on the same computer.
+ */
 export function defaultServerUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${location.hostname || 'localhost'}:2567`;
+  if (location.port === '5173' || !location.host) return `${proto}://${location.hostname || 'localhost'}:2567`;
+  return `${proto}://${location.host}`;
 }
 
 export class ColyseusSession implements RaceSession {
@@ -42,6 +46,12 @@ export class ColyseusSession implements RaceSession {
 
   static async create(serverUrl: string, name: string): Promise<ColyseusSession> {
     const room = await new Client(serverUrl).create('race', { name });
+    return new ColyseusSession(room);
+  }
+
+  /** Quick race: join any public room that is waiting, or open a new one. */
+  static async quick(serverUrl: string, name: string): Promise<ColyseusSession> {
+    const room = await new Client(serverUrl).joinOrCreate('public', { name });
     return new ColyseusSession(room);
   }
 

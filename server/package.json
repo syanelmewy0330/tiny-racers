@@ -10,12 +10,12 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
-    "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   },
   "dependencies": {
     "@colyseus/core": "^0.18.29",
     "@colyseus/schema": "^5.0.50",
-    "@colyseus/ws-transport": "^0.18.5"
+    "@colyseus/ws-transport": "^0.18.5",
+    "tsx": "^4.23.15"
   }
 }

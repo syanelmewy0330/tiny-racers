@@ -37,12 +37,15 @@ export class RaceRoom extends Room {
   private raceStartedAt = 0;
   private raceId = 0;
   private firstFinishAt = 0;
+  private isPublic = false;
+  private autoStartAt = 0;
 
-  onCreate() {
+  onCreate(options: { public?: boolean } = {}) {
+    this.isPublic = !!options.public;
     this.roomId = Array.from({ length: 5 }, () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join('');
     this.autoDispose = true;
 
-    this.onMessage('start', (client: Client) => this.startRace(client));
+    this.onMessage('start', (client: Client) => { if (client.sessionId === this.hostId) this.startRace(); });
     this.onMessage('snap', (client: Client, msg: unknown) => this.onSnap(client, msg));
     this.clock.setInterval(() => this.tick(), 50);   // 20 updates a second
   }
@@ -70,9 +73,9 @@ export class RaceRoom extends Room {
     if (this.players.size > 0 && this.phase !== 'racing' && this.phase !== 'countdown') this.unlock();
   }
 
-  private startRace(client: Client) {
-    if (client.sessionId !== this.hostId) return;
+  private startRace() {
     if (this.phase !== 'lobby' && this.phase !== 'results') return;
+    this.autoStartAt = 0;
     this.raceId++;
     this.phase = 'countdown';
     this.lock();   // nobody joins mid-race
@@ -149,12 +152,20 @@ export class RaceRoom extends Room {
 
   private tick() {
     if (this.phase === 'racing') this.checkRaceOver();
+    // Quick race rooms start by themselves once at least two racers are waiting.
+    if (this.isPublic && (this.phase === 'lobby' || this.phase === 'results')) {
+      const now = this.clock.currentTime;
+      if (this.players.size < 2) this.autoStartAt = 0;
+      else if (!this.autoStartAt) this.autoStartAt = now + (this.phase === 'results' ? 20_000 : 15_000);
+      else if (now >= this.autoStartAt) this.startRace();
+    }
     const order = this.ranking();
     const players: PlayerView[] = order.map((p, i) => ({
       id: p.id, name: p.name, character: p.character, slot: p.slot, ...p.snap,
       lap: Math.min(LAPS, Math.max(1, Math.floor(p.progress / N) + 1)), place: i + 1, finished: p.finishedAt !== null,
     }));
-    const world: WorldMessage = { phase: this.phase, hostId: this.hostId, code: this.roomId, raceId: this.raceId, players };
+    const autoStartIn = this.autoStartAt ? Math.max(0, Math.ceil((this.autoStartAt - this.clock.currentTime) / 1000)) : null;
+    const world: WorldMessage = { phase: this.phase, hostId: this.hostId, code: this.roomId, raceId: this.raceId, isPublic: this.isPublic, autoStartIn, players };
     this.broadcast('world', world);
   }
 }

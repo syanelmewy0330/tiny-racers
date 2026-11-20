@@ -14,18 +14,22 @@ export function showTitle(parent: HTMLElement, h: { onPractice: () => void; onRo
       <h1 class="logo">Tiny Racers</h1>
       <p class="sub">Meadow Loop · 3 laps</p>
       <p class="error" data-msg ${message ? '' : 'hidden'}></p>
-      <div class="row" style="justify-content:flex-start"><button class="btn" data-practice>Practice</button></div>
+      <div class="row" style="justify-content:flex-start"><button class="btn ghost" data-practice>Practice alone</button></div>
       <h2>Race online</h2>
       <label class="field">Your name <input data-name maxlength="14" placeholder="Your name" autocomplete="off"></label>
+      <div class="row" style="justify-content:flex-start">
+        <button class="btn" data-quick>Quick race</button>
+        <span class="sub" style="font-weight:600">Race anyone who is online now.</span>
+      </div>
       <div class="row">
-        <button class="btn" data-create>Create room</button>
+        <button class="btn" data-create>Create private room</button>
         <span class="or">or</span>
         <input data-code class="code-in" maxlength="5" placeholder="CODE" autocomplete="off" aria-label="Room code">
         <button class="btn ghost" data-join>Join</button>
       </div>
       <details><summary>Server address</summary>
         <label class="field">Race server <input data-server autocomplete="off"></label>
-        <p class="sub" style="font-weight:600">Leave this as it is when the server runs on the same computer as the game.</p>
+        <p class="sub" style="font-weight:600">You normally never need to change this.</p>
       </details>
       <div class="keys">
         <span><kbd>W</kbd> / <kbd>↑</kbd> accelerate</span>
@@ -44,25 +48,27 @@ export function showTitle(parent: HTMLElement, h: { onPractice: () => void; onRo
   const close = () => { screen.remove(); window.removeEventListener('keydown', onKey); };
   const busy = (on: boolean) => screen.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = on));
 
-  async function connect(kind: 'create' | 'join') {
+  async function connect(kind: 'create' | 'join' | 'quick') {
     const n = name.value.trim() || 'Racer';
-    store.set('tr-name', n); store.set('tr-server', server.value.trim());
+    store.set('tr-name', n); store.set('tr-server', server.value.trim() === defaultServerUrl() ? '' : server.value.trim());
     if (kind === 'join' && code.value.trim().length < 4) { say('Type the room code your friend sent you.'); return; }
-    busy(true); say(kind === 'create' ? 'Creating a room…' : 'Joining…');
+    busy(true); say(kind === 'create' ? 'Creating a room… (the first visit can take up to a minute while the server wakes up)' : kind === 'quick' ? 'Finding a race…' : 'Joining…');
     try {
-      const s = kind === 'create' ? await ColyseusSession.create(server.value.trim(), n) : await ColyseusSession.join(server.value.trim(), code.value, n);
+      const url = server.value.trim();
+      const s = kind === 'create' ? await ColyseusSession.create(url, n) : kind === 'quick' ? await ColyseusSession.quick(url, n) : await ColyseusSession.join(url, code.value, n);
       close(); h.onRoom(s);
     } catch (e) {
       busy(false);
       const text = String((e as Error)?.message ?? e);
       say(kind === 'join' && /not found|invalid|locked|race_in_progress/i.test(text)
         ? 'That room was not found, is full, or is already racing. Check the code with your friend.'
-        : 'Could not reach the race server. Is it running? (In PowerShell: npm run server)');
+        : 'Could not reach the race server. Check your internet, or if you are running it yourself, that it is running.');
     }
   }
 
   q<HTMLButtonElement>('[data-practice]').onclick = () => { close(); h.onPractice(); };
   q<HTMLButtonElement>('[data-create]').onclick = () => connect('create');
+  q<HTMLButtonElement>('[data-quick]').onclick = () => connect('quick');
   q<HTMLButtonElement>('[data-join]').onclick = () => connect('join');
   code.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect('join'); });
   const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' && document.activeElement === document.body) { close(); h.onPractice(); } };

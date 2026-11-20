@@ -19,6 +19,10 @@ export interface WorldMessage {
   hostId: string;
   code: string;
   raceId: number;
+  /** Quick race (public matchmaking) instead of a private code room. */
+  isPublic: boolean;
+  /** Seconds until a Quick race starts by itself, or null. */
+  autoStartIn: number | null;
   players: PlayerView[];
 }
 
