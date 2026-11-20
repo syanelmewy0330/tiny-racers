@@ -4,8 +4,6 @@ import { characterById } from '@shared/characters';
 import type { ResultRow } from '@shared/protocol';
 import { portraitUrl } from './CharacterPicker';
 
-const PRACTICE_RESULTS = `<h2>Finished!</h2><div class="time" data-total></div><ol class="laps" data-laps></ol>
-  <div class="row" style="justify-content:center"><button class="btn" data-again>Race again</button></div>`;
 
 const el = (html: string) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild as HTMLElement; };
 const svgNS = 'http://www.w3.org/2000/svg';
@@ -86,24 +84,22 @@ export class Hud {
       </div>
       <div class="rh-item empty" data-item><svg viewBox="0 0 100 100" data-icon aria-hidden="true"></svg><div class="key">E</div></div>
       <div class="rh-item-label" data-ilabel><span class="cap">NO ITEM</span></div>
-      <div class="rh-hint" data-hint><b class="kc">H</b> Controls</div>
+      <div class="rh-hint" data-hint><b class="kc">H</b> CONTROLS</div>
       <div class="rh-speedo" data-speedo>
         <svg viewBox="0 0 260 260" aria-hidden="true">
           <defs>
             <linearGradient id="rh-g" x1="0" x2="1" y1="1" y2="0"><stop offset="0" stop-color="#fcc945"/><stop offset=".55" stop-color="#ff8a00"/><stop offset="1" stop-color="#e54b4b"/></linearGradient>
-            <radialGradient id="rh-face" cx=".5" cy=".42"><stop offset="0" stop-color="#3a3f47" stop-opacity=".96"/><stop offset="1" stop-color="#1c1f26" stop-opacity=".96"/></radialGradient>
             <filter id="rh-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7"/></filter>
           </defs>
-          <circle cx="130" cy="130" r="122" fill="url(#rh-face)"/>
-          <circle cx="130" cy="130" r="121" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="2"/>
-          <path d="${arcPath(A0, A0 + SPAN, R)}" stroke="rgba(255,255,255,.1)" stroke-width="16" fill="none" stroke-linecap="round"/>
-          <path data-glow d="${arcPath(A0, A0 + SPAN, R)}" pathLength="100" stroke="#ff8a00" stroke-width="26" fill="none" stroke-linecap="round" filter="url(#rh-glow)" stroke-dasharray="0 100" opacity="0"/>
-          <path data-arc d="${arcPath(A0, A0 + SPAN, R)}" pathLength="100" stroke="url(#rh-g)" stroke-width="16" fill="none" stroke-linecap="round" stroke-dasharray="0 100"/>
+          <path d="${arcPath(A0, A0 + SPAN, R)}" stroke="rgba(28,31,38,.82)" stroke-width="34" fill="none" stroke-linecap="round"/>
+          <path d="${arcPath(A0, A0 + SPAN, R)}" stroke="rgba(242,242,240,.12)" stroke-width="20" fill="none" stroke-linecap="round"/>
+          <path data-glow d="${arcPath(A0, A0 + SPAN, R)}" pathLength="100" stroke="#ff8a00" stroke-width="26" fill="none" stroke-linecap="round" filter="url(#rh-glow)" stroke-dasharray="0 200" opacity="0"/>
+          <path data-arc d="${arcPath(A0, A0 + SPAN, R)}" pathLength="100" stroke="url(#rh-g)" stroke-width="20" fill="none" stroke-linecap="round" stroke-dasharray="0 200" opacity="0"/>
           <g data-ticks></g>
           <path d="${arcPath(A0 + 26, A0 + SPAN - 26, R - 20)}" stroke="rgba(255,255,255,.1)" stroke-width="5" fill="none" stroke-linecap="round"/>
-          <path data-drift d="${arcPath(A0 + 26, A0 + SPAN - 26, R - 20)}" pathLength="100" stroke="#6ca9e6" stroke-width="5" fill="none" stroke-linecap="round" stroke-dasharray="0 100"/>
+          <path data-drift d="${arcPath(A0 + 26, A0 + SPAN - 26, R - 20)}" pathLength="100" stroke="#6ca9e6" stroke-width="5" fill="none" stroke-linecap="round" stroke-dasharray="0 200" opacity="0"/>
         </svg>
-        <div class="read"><b class="num" data-speed>0</b><span>km/h</span></div>
+        <div class="read"><b class="num" data-speed>0</b><span>KM/H</span></div>
         <div class="tag" data-boost>BOOST</div>
       </div>
       <div class="rh-banner" data-banner hidden><div class="r"><i class="flag"></i><div class="t shout" data-btext></div><i class="flag"></i></div></div>
@@ -112,7 +108,7 @@ export class Hud {
       <div class="rh-finish" data-finish hidden><div class="big shout">FINISH!</div><div class="sub shout" data-fplace></div></div>
       <div class="rh-confetti" data-confetti></div>
     </div>`);
-    this.results = el(`<div class="results" hidden><div class="panel">${PRACTICE_RESULTS}</div></div>`);
+    this.results = el(`<div class="rr" hidden><div class="rr-card" data-rcard></div></div>`);
     parent.append(this.root, this.results);
     for (const k of ['place', 'pn', 'pof', 'pbadge', 'lap', 'time', 'net', 'standings', 'help', 'hint', 'speedo', 'speed', 'boost', 'banner', 'btext', 'toast', 'big', 'finish', 'fplace', 'confetti', 'lines', 'item', 'ilabel'])
       this.els[k] = this.q(`[data-${k}]`);
@@ -127,10 +123,9 @@ export class Hud {
       l.setAttribute('stroke-width', '3'); l.setAttribute('stroke-linecap', 'round');
       tickG.append(l); this.ticks.push(l);
     }
-    (this.results.querySelector('[data-again]') as HTMLElement).onclick = () => this.onRestart?.();
 
     // controls guide: open for new players, H toggles and remembers
-    this.helpOpen = store.get(HELP_KEY) !== 'hidden';
+    this.helpOpen = store.get(HELP_KEY) === 'shown';
     this.applyHelp();
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyH' || this.root.hidden || (e.target as HTMLElement)?.tagName === 'INPUT') return;
@@ -192,15 +187,15 @@ export class Hud {
     const kmh = Math.abs(d.kmh);
     this.shownKmh += (kmh - this.shownKmh) * (1 - Math.exp(-dt * 14));
     const f = Math.min(1, this.shownKmh / MAX_KMH) * 100;
-    this.speedArc.setAttribute('stroke-dasharray', `${f} 100`);
-    this.glowArc.setAttribute('stroke-dasharray', `${f} 100`);
+    this.speedArc.setAttribute('stroke-dasharray', `${f} 200`); this.speedArc.setAttribute('opacity', f > 0.3 ? '1' : '0');
+    this.glowArc.setAttribute('stroke-dasharray', `${f} 200`);
     this.glowArc.setAttribute('opacity', d.boosting ? String(0.75 + Math.sin(this.clock * 18) * 0.25) : '0');
     this.ticks.forEach((t, i) => t.setAttribute('stroke', (i / 8) * 100 <= f + 0.5 ? '#f2f2f0' : 'rgba(242,242,240,.3)'));
     e.speed.textContent = String(Math.round(this.shownKmh));
     e.speedo.classList.toggle('boost', d.boosting);
     e.lines.classList.toggle('on', d.boosting);
     const charge = Math.min(1, d.drift / 1.6) * 100;
-    this.driftArc.setAttribute('stroke-dasharray', `${charge} 100`);
+    this.driftArc.setAttribute('stroke-dasharray', `${charge} 200`); this.driftArc.setAttribute('opacity', charge > 0.3 ? '1' : '0');
     this.driftArc.setAttribute('stroke', DRIFT_COLORS[Math.min(2, d.driftLevel)]);
 
     // ---- minimap ----
@@ -308,41 +303,49 @@ export class Hud {
     if (name) { it.classList.remove('got'); void it.offsetWidth; it.classList.add('got'); }
   }
 
-  showResults(total: number, laps: number[]) {
+  /** Fill the results card: a heading, an optional big time, ranked rows and buttons. */
+  private renderResults(title: string, big: string | null, rows: { pos: number; face?: string; name: string; time: string; me?: boolean; plain?: boolean }[], note: string,
+    buttons: { label: string; kind: 'go' | 'alt'; act: () => void }[]) {
+    const card = this.results.querySelector('[data-rcard]') as HTMLElement;
+    card.textContent = '';
+    const h = document.createElement('div'); h.className = 'rr-title shout'; h.textContent = title; card.append(h);
+    if (big) { const b = document.createElement('div'); b.className = 'rr-big num'; b.textContent = big; card.append(b); }
+    const list = document.createElement('ol'); list.className = 'rr-rows';
+    rows.forEach((r, i) => {
+      const li = document.createElement('li'); if (r.me) li.className = 'me';
+      li.style.animationDelay = `${0.15 + i * 0.08}s`;
+      const pos = document.createElement('span'); pos.className = r.plain ? 'pos num' : `pos num p${r.pos}`; pos.textContent = String(r.pos); li.append(pos);
+      if (r.face) { const f = document.createElement('img'); f.className = 'face'; f.alt = ''; f.src = r.face; li.append(f); }
+      const n = document.createElement('span'); n.className = 'name'; n.textContent = r.name; li.append(n);
+      const t = document.createElement('span'); t.className = 't num'; t.textContent = r.time; li.append(t);
+      list.append(li);
+    });
+    card.append(list);
+    if (note) { const p = document.createElement('p'); p.className = 'rr-note'; p.textContent = note; card.append(p); }
+    const row = document.createElement('div'); row.className = 'rr-btns';
+    for (const b of buttons) { const btn = document.createElement('button'); btn.className = `rr-btn ${b.kind}`; btn.textContent = b.label; btn.onclick = b.act; row.append(btn); }
+    card.append(row);
     this.els.finish.hidden = true;
-    (this.results.querySelector('.panel') as HTMLElement).innerHTML = PRACTICE_RESULTS;
-    (this.results.querySelector('[data-again]') as HTMLElement).onclick = () => this.onRestart?.();
-    (this.results.querySelector('[data-total]') as HTMLElement).textContent = formatTime(total);
-    const list = this.results.querySelector('[data-laps]') as HTMLElement; list.textContent = '';
-    laps.forEach((t, i) => { const li = document.createElement('li'); li.innerHTML = `<span class="pos">${i + 1}</span><span>Lap ${i + 1}</span><span class="t">${formatTime(t)}</span>`; list.append(li); });
     this.results.hidden = false;
-    (this.results.querySelector('[data-again]') as HTMLElement).focus();
+    (row.querySelector('button') as HTMLElement | null)?.focus();
+  }
+
+  showResults(total: number, laps: number[]) {
+    this.renderResults('FINISHED!', formatTime(total), laps.map((t, i) => ({ pos: i + 1, name: `Lap ${i + 1}`, time: formatTime(t), plain: true })), '',
+      [{ label: 'RACE AGAIN', kind: 'go', act: () => this.onRestart?.() }]);
   }
   hideResults() { this.results.hidden = true; }
 
   /** Online results from the server: everyone's place and time, with Rematch for the host. */
   showOnlineResults(rows: ResultRow[], me: string, isHost: boolean, rematch: () => void, leave: () => void) {
-    this.els.finish.hidden = true;
-    const panel = this.results.querySelector('.panel') as HTMLElement;
     const mine = rows.find((r) => r.id === me);
-    panel.innerHTML = `<h2>${mine && mine.place === 1 ? 'You win!' : 'Race results'}</h2><ol class="laps" data-rows></ol>
-      <p class="sub" data-wait></p><div class="row" style="justify-content:center"></div>`;
-    const list = panel.querySelector('[data-rows]') as HTMLElement;
-    for (const r of rows) {
-      const li = document.createElement('li');
-      const pos = document.createElement('span'); pos.className = 'pos'; pos.textContent = String(r.place);
-      const face = document.createElement('img'); face.className = 'face'; face.alt = ''; face.src = portraitUrl(r.character);
-      face.style.cssText = 'width:28px;height:28px;border-radius:8px;object-fit:cover';
-      const name = document.createElement('span'); name.textContent = `${r.name}${r.id === me ? ' (you)' : ''}`;
-      const t = document.createElement('span'); t.className = 't'; t.textContent = r.time === null ? 'did not finish' : formatTime(r.time / 1000);
-      li.append(pos, face, name, t);
-      list.append(li);
-    }
-    const row = panel.querySelector('.row') as HTMLElement;
-    if (isHost) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'Rematch'; b.onclick = rematch; row.append(b); }
-    else (panel.querySelector('[data-wait]') as HTMLElement).textContent = 'Waiting for the host to start a rematch…';
-    const l = document.createElement('button'); l.className = 'btn coral'; l.textContent = 'Leave room'; l.onclick = leave; row.append(l);
-    this.results.hidden = false;
+    const buttons: { label: string; kind: 'go' | 'alt'; act: () => void }[] = [];
+    if (isHost) buttons.push({ label: 'REMATCH', kind: 'go', act: rematch });
+    buttons.push({ label: 'LEAVE ROOM', kind: 'alt', act: leave });
+    this.renderResults(mine && mine.place === 1 ? 'YOU WIN!' : 'RACE RESULTS', null,
+      rows.map((r) => ({ pos: r.place, face: portraitUrl(r.character), name: `${r.name}${r.id === me ? ' (you)' : ''}`, me: r.id === me,
+        time: r.time === null ? 'DNF' : formatTime(r.time / 1000) })),
+      isHost ? '' : 'Waiting for the host to start a rematch…', buttons);
   }
 }
 
