@@ -83,6 +83,10 @@ export class Game {
     this.hud = new Hud(uiRoot);
     this.hud.onRestart = () => this.startRace();
     this.hud.onMenu = () => this.toMenu();
+    this.look.onAutoStep = (what) => {
+      this.hud.setPauseGraphics(this.look.quality); this.resize();
+      this.hud.say(what === 'low' ? 'Graphics: Low (smoother)' : 'Shadows off (smoother)', 2);
+    };
     this.input.onPad = (on) => this.hud.say(on ? 'Controller connected' : 'Controller unplugged', 1.6);
     // switching to another tab pauses a practice race
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.mode === 'race' && !this.online && !this.hud.paused) this.openPause(); });

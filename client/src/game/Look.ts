@@ -11,11 +11,13 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
  * Display only. "Low" graphics skips the post effects for slower computers.
  */
 export type Quality = 'high' | 'low';
-const KEY = 'tr-gfx';
+const KEY = 'tr-gfx', AUTO_KEY = 'tr-gfx-auto';
 const store = {
-  get: () => { try { return localStorage.getItem(KEY); } catch { return null; } },
-  set: (v: string) => { try { localStorage.setItem(KEY, v); } catch { /* private mode */ } },
+  get: (k = KEY) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (v: string, k = KEY) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
+/** Frame rate below which "auto" graphics steps down. */
+const SLOW_FPS = 45;
 
 /** Where the sun sits (direction towards it). Low and warm, like late afternoon. */
 export const SUN_DIR = new THREE.Vector3(0.55, 0.42, 0.72).normalize();
@@ -57,20 +59,57 @@ export class Look {
   private grade: ShaderPass | null = null;
   private bloom: UnrealBloomPass | null = null;
   private speedFx = 0;
+  /** Player picked a setting with G or the menu; otherwise graphics adapt to the computer. */
+  private manual: boolean;
+  private shadowsOff = false;
+  private fpsTime = 0; private fpsFrames = 0; private warm = 0; private slowWindows = 0;
+  /** Called when auto graphics steps down, so the game can tell the player. */
+  onAutoStep?: (what: 'low' | 'shadows') => void;
 
   constructor(private renderer: THREE.WebGLRenderer, private scene: THREE.Scene, private camera: THREE.PerspectiveCamera) {
-    this.quality = store.get() === 'low' ? 'low' : 'high';
+    const saved = store.get();
+    this.manual = saved === 'low' || saved === 'high';
+    // auto: start where this computer ended up last time
+    this.quality = this.manual ? saved as Quality : store.get(AUTO_KEY) === 'low' || store.get(AUTO_KEY) === 'lowest' ? 'low' : 'high';
+    if (!this.manual && store.get(AUTO_KEY) === 'lowest') { this.shadowsOff = true; renderer.shadowMap.enabled = false; }
     scene.add(makeSky());
     scene.add(makeMountains());
     this.apply();
   }
 
-  setQuality(q: Quality) { this.quality = q; store.set(q); this.apply(); }
+  setQuality(q: Quality) {
+    this.quality = q; this.manual = true; store.set(q);
+    if (this.shadowsOff) this.setShadows(true);
+    this.apply();
+  }
+
+  private setShadows(on: boolean) {
+    this.shadowsOff = !on; this.renderer.shadowMap.enabled = on;
+    this.scene.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
+  }
+
+  /** Auto graphics: if the game runs slowly for a few seconds, step down once per slow stretch. */
+  private watchSpeed(dt: number) {
+    if (this.manual) return;
+    if (dt > 0.25) { this.fpsTime = 0; this.fpsFrames = 0; return; }   // tab was hidden or a hitch
+    this.warm += dt;
+    if (this.warm < 4) return;                                          // let the first frames settle
+    this.fpsTime += dt; this.fpsFrames++;
+    if (this.fpsTime < 2) return;
+    const fps = this.fpsFrames / this.fpsTime;
+    this.fpsTime = 0; this.fpsFrames = 0;
+    this.slowWindows = fps < SLOW_FPS ? this.slowWindows + 1 : 0;
+    if (this.slowWindows < 2) return;
+    this.slowWindows = 0; this.warm = 0;
+    if (this.quality === 'high') { this.quality = 'low'; store.set('low', AUTO_KEY); this.apply(); this.onAutoStep?.('low'); }
+    else if (!this.shadowsOff) { this.setShadows(false); store.set('lowest', AUTO_KEY); this.onAutoStep?.('shadows'); }
+  }
   toggle() { this.setQuality(this.quality === 'high' ? 'low' : 'high'); return this.quality; }
 
   private apply() {
     const high = this.quality === 'high';
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1));
+    // effects run at up to 1.5x screen sharpness: above that the cost grows fast for little visible gain
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 1.5 : 1));
     if (high && !this.composer) {
       const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
       const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
@@ -97,6 +136,7 @@ export class Look {
 
   /** boost 0..1 drives the speed blur. */
   render(dt: number, boost: number) {
+    this.watchSpeed(dt);
     this.speedFx += (boost - this.speedFx) * Math.min(1, dt * 6);
     if (this.composer && this.grade) {
       this.grade.uniforms.uSpeed.value = this.speedFx;
