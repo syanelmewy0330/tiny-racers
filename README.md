@@ -59,7 +59,7 @@ This starts the race server and the game together, and prints two addresses. If 
 1. On your computer, the game opens. Type your name and click **Create room**. You get a 5-letter code.
 2. On the **other** computer, open a browser and go to the "another computer" address it printed, like `http://192.168.1.23:5173`. That computer doesn't need to install anything.
 3. Your friend types their name and the code, then clicks **Join**. You both see each other in the room.
-4. You (the host) click **Start race**. After the race, click **Rematch** to go again.
+4. Your friend clicks **I'm ready**, then you (the host) click **Start race**. After the race, click **Rematch** to go again.
 
 
 ## Controls
@@ -113,7 +113,7 @@ tiny-racers/
   scripts/play.mjs        npm run play: server + game in one window
 ```
 
-Design notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Design notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Multiplayer details, the test procedure and cross-network testing are in [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 
 ## Useful commands
 

@@ -10,6 +10,7 @@ const PATH = buildPath(MEADOW_LOOP, 1);
 const N = PATH.pts.length;
 const MAX_SPEED = 62;            // m/s; faster than any legal boost, so only cheats or glitches exceed it
 const FINISH_GRACE_MS = 30_000;  // after the winner finishes, others get this long
+const RECONNECT_SECONDS = 20;    // how long a dropped player's place is kept
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 interface Player {
@@ -22,6 +23,8 @@ interface Player {
   index: number;
   progress: number;
   finishedAt: number | null;   // race ms, decided by the server
+  ready: boolean;
+  connected: boolean;
 }
 
 /**
@@ -39,13 +42,18 @@ export class RaceRoom extends Room {
   private firstFinishAt = 0;
   private isPublic = false;
   private autoStartAt = 0;
+  private lastResults: ResultRow[] | null = null;
 
   onCreate(options: { public?: boolean } = {}) {
     this.isPublic = !!options.public;
     this.roomId = Array.from({ length: 5 }, () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join('');
     this.autoDispose = true;
 
-    this.onMessage('start', (client: Client) => { if (client.sessionId === this.hostId) this.startRace(); });
+    this.onMessage('start', (client: Client) => { if (client.sessionId === this.hostId && this.everyoneReady()) this.startRace(); });
+    this.onMessage('ready', (client: Client, on: unknown) => {
+      const p = this.players.get(client.sessionId);
+      if (p && (this.phase === 'lobby' || this.phase === 'results')) p.ready = on === true;
+    });
     this.onMessage('snap', (client: Client, msg: unknown) => this.onSnap(client, msg));
     // Change racer while waiting in the lobby (not mid-race). Several players may pick the same one.
     this.onMessage('character', (client: Client, id: unknown) => {
@@ -64,23 +72,64 @@ export class RaceRoom extends Room {
       id: client.sessionId, name, slot,
       character: isCharacterId(options.character) ? options.character : CHARACTERS[slot % CHARACTERS.length].id,
       snap: { x: 0, y: 0, z: 0, yaw: 0, speed: 0, drift: 0 }, lastSnapAt: 0, index: 0, progress: 0, finishedAt: null,
+      ready: false, connected: true,
     });
     if (!this.hostId) this.hostId = client.sessionId;
     client.send('welcome', { you: client.sessionId, code: this.roomId });
     console.log(`  ${name} joined room ${this.roomId} (${this.players.size}/${MAX_PLAYERS})`);
   }
 
+  /** Connection lost without pressing Leave (Wi-Fi blip, laptop sleep): keep their place for a while. */
+  onDrop(client: Client) {
+    const p = this.players.get(client.sessionId);
+    if (!p) return;
+    p.connected = false;
+    this.notice(`${p.name} lost connection. Waiting up to ${RECONNECT_SECONDS} s for them…`, client);
+    console.log(`  ${p.name} dropped from room ${this.roomId}`);
+    this.allowReconnection(client, RECONNECT_SECONDS);
+  }
+
+  onReconnect(client: Client) {
+    const p = this.players.get(client.sessionId);
+    if (!p) return;
+    p.connected = true;
+    p.lastSnapAt = 0;   // don't treat the gap as a teleport
+    client.send('welcome', { you: client.sessionId, code: this.roomId });
+    if (this.phase === 'results' && this.lastResults) client.send('race:results', { raceId: this.raceId, results: this.lastResults });
+    this.notice(`${p.name} is back.`, client);
+    console.log(`  ${p.name} reconnected to room ${this.roomId}`);
+  }
+
   onLeave(client: Client) {
     const p = this.players.get(client.sessionId);
     this.players.delete(client.sessionId);
-    if (this.hostId === client.sessionId) this.hostId = [...this.players.keys()][0] ?? '';
+    if (this.hostId === client.sessionId) {
+      this.hostId = [...this.players.keys()][0] ?? '';
+      const next = this.players.get(this.hostId);
+      if (p && next) this.notice(`${p.name} (the host) left. ${next.name} is now the host.`);
+    } else if (p) this.notice(`${p.name} left the room.`);
     if (p) console.log(`  ${p.name} left room ${this.roomId}`);
     if (this.phase === 'racing') this.checkRaceOver();
     if (this.players.size > 0 && this.phase !== 'racing' && this.phase !== 'countdown') this.unlock();
   }
 
+  /** A short message shown to everyone (or everyone except `except`). */
+  private notice(text: string, except?: Client) {
+    this.broadcast('notice', { text }, except ? { except } : undefined);
+  }
+
+  /**
+   * The host may start once every other connected player pressed Ready.
+   * Straight after a race (results screen) the Rematch button works without it.
+   */
+  private everyoneReady() {
+    if (this.phase === 'results') return true;
+    return [...this.players.values()].every((p) => p.id === this.hostId || p.ready || !p.connected);
+  }
+
   private startRace() {
     if (this.phase !== 'lobby' && this.phase !== 'results') return;
+    if (this.phase === 'lobby' && [...this.players.values()].some((p) => !p.connected)) return;   // wait for dropped players
     this.autoStartAt = 0;
     this.raceId++;
     this.phase = 'countdown';
@@ -89,8 +138,9 @@ export class RaceRoom extends Room {
     for (const p of this.players.values()) {
       p.index = (N - back - Math.floor(p.slot / 2) * 6 + N) % N;
       p.progress = -(back + Math.floor(p.slot / 2) * 6);
-      p.finishedAt = null; p.lastSnapAt = 0;
+      p.finishedAt = null; p.lastSnapAt = 0; p.ready = false;
     }
+    this.lastResults = null;
     this.broadcast('race:start', { raceId: this.raceId, countdown: COUNTDOWN_SECONDS, grid: Object.fromEntries([...this.players.values()].map((p) => [p.id, p.slot])) });
     this.clock.setTimeout(() => {
       if (this.phase !== 'countdown') return;
@@ -151,6 +201,7 @@ export class RaceRoom extends Room {
     if (this.phase === 'racing' && (everyoneDone || graceOver)) {
       this.phase = 'results';
       const results: ResultRow[] = this.ranking().map((p, i) => ({ id: p.id, name: p.name, character: p.character, place: i + 1, time: p.finishedAt }));
+      this.lastResults = results;
       this.broadcast('race:results', { raceId: this.raceId, results });
       this.unlock();
     }
@@ -169,6 +220,7 @@ export class RaceRoom extends Room {
     const players: PlayerView[] = order.map((p, i) => ({
       id: p.id, name: p.name, character: p.character, slot: p.slot, ...p.snap,
       lap: Math.min(LAPS, Math.max(1, Math.floor(p.progress / N) + 1)), place: i + 1, finished: p.finishedAt !== null,
+      ready: p.ready, connected: p.connected,
     }));
     const autoStartIn = this.autoStartAt ? Math.max(0, Math.ceil((this.autoStartAt - this.clock.currentTime) / 1000)) : null;
     const world: WorldMessage = { phase: this.phase, hostId: this.hostId, code: this.roomId, raceId: this.raceId, isPublic: this.isPublic, autoStartIn, players };

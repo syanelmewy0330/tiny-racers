@@ -11,7 +11,13 @@ export interface SessionEvents {
   results?: (rows: ResultRow[]) => void;
   correct?: (d: { x: number; z: number; yaw: number }) => void;
   closed?: (reason: string) => void;
+  /** Short messages from the server, such as "Sam left the room". */
+  notice?: (text: string) => void;
+  /** The connection dropped (true) or came back (false). */
+  reconnecting?: (on: boolean) => void;
 }
+
+export type ConnectionState = 'online' | 'reconnecting';
 
 /**
  * Where the race server is. Online, the server also hands out the game, so it is
@@ -30,6 +36,12 @@ export class ColyseusSession implements RaceSession {
   latest: WorldMessage | null = null;
   events: SessionEvents = {};
   private leaving = false;
+  /** Round-trip time to the server in ms, measured every 2 s. */
+  pingMs: number | null = null;
+  connection: ConnectionState = 'online';
+  /** Most recent server notice, for the lobby to show. */
+  lastNotice: { text: string; at: number } | null = null;
+  private pingTimer = 0;
 
   private constructor(private room: Room) {
     this.code = room.roomId;
@@ -41,7 +53,16 @@ export class ColyseusSession implements RaceSession {
     room.onMessage('race:finish', (d) => this.events.finish?.(d));
     room.onMessage('race:results', (d: { results: ResultRow[] }) => this.events.results?.(d.results));
     room.onMessage('correct', (d) => this.events.correct?.(d));
-    room.onLeave((code: number) => { if (!this.leaving) this.events.closed?.(`Lost connection to the race server (code ${code}).`); });
+    room.onMessage('notice', (d: { text: string }) => { this.lastNotice = { text: d.text, at: performance.now() }; this.events.notice?.(d.text); });
+    // Colyseus retries by itself when the connection drops; the server keeps our place for 20 s.
+    room.onDrop(() => { this.connection = 'reconnecting'; this.pingMs = null; this.events.reconnecting?.(true); });
+    room.onReconnect(() => { this.connection = 'online'; this.events.reconnecting?.(false); });
+    room.onLeave((code: number) => {
+      window.clearInterval(this.pingTimer);
+      if (!this.leaving) this.events.closed?.(`Lost connection to the race server (code ${code}). Check your internet and join again.`);
+    });
+    const ping = () => { if (this.connection === 'online') room.ping((ms) => { this.pingMs = Math.round(ms); }); };
+    this.pingTimer = window.setInterval(ping, 2000); ping();
   }
 
   static async create(serverUrl: string, name: string, character: string): Promise<ColyseusSession> {
@@ -64,6 +85,9 @@ export class ColyseusSession implements RaceSession {
 
   start() { this.room.send('start'); }
 
+  /** Waiting room: tell the host you are ready (or not). */
+  setReady(on: boolean) { this.room.send('ready', on); }
+
   /** Pick a different racer while in the lobby. */
   setCharacter(id: string) { this.room.send('character', id); }
 
@@ -74,5 +98,5 @@ export class ColyseusSession implements RaceSession {
     });
   }
 
-  leave() { this.leaving = true; this.room.leave(true).catch(() => {}); }
+  leave() { this.leaving = true; window.clearInterval(this.pingTimer); this.room.leave(true).catch(() => {}); }
 }

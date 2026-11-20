@@ -96,3 +96,11 @@ details[open] { display: flex; flex-direction: column; gap: 6px; }
 .mini-pick[aria-pressed="true"] { box-shadow: 0 0 0 4px var(--pink); }
 .players .face { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--ink); flex: none; object-fit: cover; }
 .players .who { color: var(--muted); font-size: .85rem; }
+.chip.net { font-family: inherit; font-size: .85rem; display: flex; align-items: center; gap: 6px; }
+.chip.net::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #3fb56a; }
+.chip.net[data-state="slow"]::before { background: #f2b632; }
+.chip.net[data-state="bad"]::before { background: #e2534a; }
+.players .status { margin-left: auto; font-size: .8rem; border-radius: 99px; padding: 2px 10px; border: 2px solid var(--ink); background: #fff; white-space: nowrap; }
+.players .status.ready { background: #c9f2d6; }
+.players .status.away { background: #ffe0dc; }
+.notice { margin: 0; font-weight: 800; color: var(--ink); background: #fff3c4; border: 2px solid var(--ink); border-radius: 12px; padding: 6px 10px; }

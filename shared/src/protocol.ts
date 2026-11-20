@@ -11,6 +11,10 @@ export interface PlayerView extends KartSnapshot {
   lap: number;
   place: number;
   finished: boolean;
+  /** Waiting room: this player pressed Ready. */
+  ready: boolean;
+  /** False while the player's connection has dropped and the server is holding their place. */
+  connected: boolean;
 }
 
 /** Sent by the server 20 times a second to everyone in the room. */

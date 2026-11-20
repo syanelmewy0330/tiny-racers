@@ -105,6 +105,8 @@ export class Game {
     s.events = {
       world: (w) => {
         this.meView = w.players.find((p) => p.id === s.me) ?? null;
+        // missed "GO" while reconnecting: catch up with the server
+        if (this.mode === 'race' && w.phase === 'racing' && this.race.phase === 'countdown') { this.race.phase = 'racing'; this.race.countdown = 0; }
         if (this.meView && this.meView.character !== this.characterId) this.setCharacter(this.meView.character);
         if (this.mode === 'race') this.remotes.sync(w.players, s.me, this.time);
       },
@@ -133,6 +135,8 @@ export class Game {
         this.hud.showOnlineResults(rows, s.me, s.isHost, () => s.start(), () => this.leaveRoom());
       },
       closed: (reason) => this.leaveRoom(reason),
+      notice: (text) => { if (this.mode === 'race') this.hud.say(text, 3); },
+      reconnecting: (on) => { if (this.mode === 'race') this.hud.say(on ? 'Connection lost. Reconnecting…' : 'Reconnected!', on ? 3 : 1.5); },
     };
   }
 
@@ -234,9 +238,14 @@ export class Game {
         drift: this.kart.driftCharge, driftLevel: this.kart.driftLevel,
         countdown: counting ? (this.online ? Math.max(0.01, this.countdownEndsAt - this.time) : this.race.countdown) : null,
         place: this.online && this.meView ? `${ordinal(this.meView.place)} / ${players}` : null,
+        net: this.online ? { state: this.online.connection, ping: this.online.pingMs } : null,
       });
       this.sendTimer += dt;
-      if (this.sendTimer > 0.05) { this.sendTimer = 0; this.session.sendSnapshot(this.kart.snapshot()); }
+      // 20 position updates a second; none while reconnecting (they would only pile up)
+      if (this.sendTimer > 0.05) {
+        this.sendTimer = 0;
+        if (!this.online || this.online.connection === 'online') this.session.sendSnapshot(this.kart.snapshot());
+      }
     }
     this.renderer.render(this.scene, this.camera);
   }

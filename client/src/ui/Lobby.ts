@@ -14,13 +14,17 @@ export function showLobby(parent: HTMLElement, s: ColyseusSession, onLeave: () =
       <p class="sub" data-how>Send this code to your friends. They open Tiny Racers, type it next to <b>Join</b>, and appear here.</p>
       <ul class="players" data-list></ul>
       <div class="mini-picks" data-picks><span class="sub">Your racer:</span></div>
+      <p class="notice" data-notice hidden></p>
       <p class="sub" data-note></p>
-      <div class="row"><button class="btn" data-start>Start race</button><button class="btn ghost" data-leave>Leave room</button></div>
+      <p class="sub" data-net></p>
+      <div class="row"><button class="btn" data-start>Start race</button><button class="btn" data-ready>I'm ready</button><button class="btn ghost" data-leave>Leave room</button></div>
     </div>`;
   parent.append(screen);
   const q = <T extends HTMLElement>(sel: string) => screen.querySelector(sel) as T;
   q<HTMLElement>('[data-code]').textContent = s.code;
   q<HTMLButtonElement>('[data-start]').onclick = () => s.start();
+  const readyBtn = q<HTMLButtonElement>('[data-ready]');
+  readyBtn.onclick = () => s.setReady(!(s.latest?.players.find((p) => p.id === s.me)?.ready));
   q<HTMLButtonElement>('[data-leave]').onclick = () => { close(); onLeave(); };
 
   const picks = q<HTMLElement>('[data-picks]');
@@ -43,9 +47,14 @@ export function showLobby(parent: HTMLElement, s: ColyseusSession, onLeave: () =
       const face = document.createElement('img'); face.className = 'face'; face.alt = ''; face.src = portraitUrl(ch.id);
       face.style.background = '#' + ch.color.toString(16).padStart(6, '0');
       const label = document.createElement('span');
-      label.textContent = `${p.name}${p.id === s.me ? ' (you)' : ''}${p.id === w.hostId ? ' · host' : ''}`;
+      label.textContent = `${p.name}${p.id === s.me ? ' (you)' : ''}`;
       const who = document.createElement('span'); who.className = 'who'; who.textContent = ch.name;
-      li.append(face, label, who); list.append(li);
+      const status = document.createElement('span'); status.className = 'status';
+      if (!p.connected) { status.textContent = 'Reconnecting…'; status.classList.add('away'); }
+      else if (p.id === w.hostId) status.textContent = 'Host';
+      else if (p.ready) { status.textContent = 'Ready ✓'; status.classList.add('ready'); }
+      else status.textContent = 'Not ready';
+      li.append(face, label, who, status); list.append(li);
     }
     if (w.isPublic) {
       q<HTMLElement>('[data-title]').textContent = 'Quick race';
@@ -55,13 +64,27 @@ export function showLobby(parent: HTMLElement, s: ColyseusSession, onLeave: () =
     const mine = w.players.find((p) => p.id === s.me)?.character;
     for (const { b, id } of pickButtons) b.setAttribute('aria-pressed', String(id === mine));
     const start = q<HTMLButtonElement>('[data-start]');
-    start.hidden = !s.isHost;
+    const others = w.players.filter((p) => p.id !== w.hostId);
+    const waitingFor = others.filter((p) => !p.ready || !p.connected);
+    start.hidden = !s.isHost || w.isPublic;
+    start.disabled = waitingFor.length > 0;
+    const meReady = !!w.players.find((p) => p.id === s.me)?.ready;
+    readyBtn.hidden = s.isHost || w.isPublic;
+    readyBtn.textContent = meReady ? 'Not ready' : "I'm ready";
+    readyBtn.classList.toggle('ghost', meReady);
     q<HTMLElement>('[data-note]').textContent = w.autoStartIn !== null
       ? `Race starts in ${w.autoStartIn} s…`
       : w.isPublic && w.players.length < 2 ? 'Waiting for another racer to join…'
       : s.isHost
-      ? (w.players.length < 2 ? 'Waiting for someone to join. You can also start alone.' : `${w.players.length} of ${MAX_PLAYERS} racers here. Start when everyone is in.`)
-      : 'Waiting for the host to start the race…';
+      ? (w.players.length < 2 ? 'Waiting for someone to join. You can also start alone.'
+        : waitingFor.length ? `Waiting for ${waitingFor.map((p) => p.name).join(', ')} to press Ready.`
+        : `${w.players.length} of ${MAX_PLAYERS} racers here. Everyone is ready!`)
+      : meReady ? 'You are ready. Waiting for the host to start the race…' : 'Press "I\'m ready" when you are set.';
+    const n = s.lastNotice, notice = q<HTMLElement>('[data-notice]');
+    notice.hidden = !n || performance.now() - n.at > 8000;
+    if (n) notice.textContent = n.text;
+    q<HTMLElement>('[data-net]').textContent = s.connection === 'reconnecting'
+      ? 'Connection lost. Reconnecting…' : `Connected${s.pingMs !== null ? ` · ${s.pingMs} ms` : ''}`;
   };
   const timer = window.setInterval(render, 200);
   render();
