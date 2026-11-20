@@ -159,3 +159,50 @@ export function tube(points: [number, number, number][], radius: number, m: THRE
   o.add(blob(m, [end.x, end.y, end.z], radius * taper));
   return o;
 }
+
+/**
+ * Sculpted, hand-painted shapes: start from a unit sphere, move its vertices with
+ * `shape`, then colour each vertex with `colour` (both get the original unit-sphere
+ * position). Gives smooth fur patterns with no seams, like a painted vinyl figure.
+ */
+export function sculpted(
+  shape: (p: THREE.Vector3) => void,
+  colour: (p: THREE.Vector3) => THREE.Color,
+  opts: { rough?: number; seg?: number; texSize?: number } = {},
+) {
+  const seg = opts.seg ?? 64;
+  const g = new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75));
+  const pos = g.attributes.position;
+  const p = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    p.fromBufferAttribute(pos, i);
+    shape(p);
+    pos.setXYZ(i, p.x, p.y, p.z);
+  }
+  g.computeVertexNormals();
+  // Paint into a texture (per pixel, so patterns stay crisp) using the sphere's own UV layout.
+  const W = opts.texSize ?? 1024, H = W / 2;
+  const data = new Uint8Array(W * H * 4), q = new THREE.Vector3();
+  for (let y = 0; y < H; y++) {
+    const theta = ((y + 0.5) / H) * Math.PI;          // 0 at the top
+    for (let x = 0; x < W; x++) {
+      const phi = ((x + 0.5) / W) * Math.PI * 2;
+      q.set(-Math.cos(phi) * Math.sin(theta), Math.cos(theta), Math.sin(phi) * Math.sin(theta));
+      const c = colour(q).clone().convertLinearToSRGB();
+      const k = ((H - 1 - y) * W + x) * 4;
+      data[k] = c.r * 255; data[k + 1] = c.g * 255; data[k + 2] = c.b * 255; data[k + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, W, H);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true; tex.anisotropy = 4; tex.needsUpdate = true;
+  const m = new THREE.MeshPhysicalMaterial({ map: tex, roughness: opts.rough ?? 0.55, clearcoat: 0.45, clearcoatRoughness: 0.4 });
+  const o = new THREE.Mesh(g, m);
+  o.castShadow = true; o.receiveShadow = true;
+  return o;
+}
+
+export const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const _c = new THREE.Color();
+/** Blend two hex colours (t = 0 gives a, 1 gives b). Returns a shared Color: use it straight away. */
+export const mix = (a: number, b: number, t: number) => _c.setHex(a).lerp(new THREE.Color(b), t);

@@ -14,9 +14,13 @@ export function buildZoomie(paint: PaintDef): KartRig {
     r.add(rbox(trim, [x, 0.665, -0.2], [0.09, 0.02, 1.3], 0.01));
   }
   r.add(rbox(trim, [0, 0.3, 1.17], [1.35, 0.16, 0.24], 0.08));                  // bumper
+  r.add(rbox(trim, [0, 0.21, 1.3], [1.5, 0.04, 0.22], 0.02));                    // front splitter
+  for (const x of [-1, 1]) r.add(rbox(trim, [x * 0.74, 0.26, 1.3], [0.04, 0.14, 0.24], 0.02));   // splitter fins
   for (const x of [-1, 1]) {
     r.add(blob(body, [x * 0.58, 0.42, -0.2], [0.22, 0.2, 0.55]));             // side pods
-    r.add(blob(vinyl(INK, 0.4), [x * 0.6, 0.42, 0.18], [0.12, 0.09, 0.05]));  // air intakes
+    r.add(blob(vinyl(INK, 0.4), [x * 0.62, 0.43, 0.2], [0.14, 0.11, 0.06]));  // air intakes
+    r.add(blob(gloss(paint.trim), [x * 0.42, 0.66, 0.05], [0.05, 0.05, 0.05]));   // mirror stalk
+    r.add(rbox(gloss(paint.trim), [x * 0.48, 0.72, 0.05], [0.14, 0.08, 0.04], 0.02, [0, x * 0.3, 0]));   // wing mirror
   }
   r.add(blob(body, [0, 0.62, -0.88], [0.38, 0.24, 0.3]));                     // engine cover
   // rear wing on two struts
