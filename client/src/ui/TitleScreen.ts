@@ -1,4 +1,5 @@
 import { ColyseusSession, defaultServerUrl } from '../net/ColyseusSession';
+import { SERVERS, serverForCode, measurePing, type RaceServer } from '../net/servers';
 import { characterCards, savedCharacter, saveCharacter } from './CharacterPicker';
 
 const store = {
@@ -19,6 +20,10 @@ export function showTitle(parent: HTMLElement, h: { onPractice: (character: stri
       <div data-picker></div>
       <div class="row" style="justify-content:flex-start"><button class="btn ghost" data-practice>Practice alone</button></div>
       <h2>Race online</h2>
+      <div class="servers" role="radiogroup" aria-label="Race server">
+        ${SERVERS.map((sv) => `<button class="srv" role="radio" data-srv="${sv.id}"><b>${sv.name}</b><span class="ms" data-ms>checking…</span></button>`).join('')}
+      </div>
+      <p class="sub" style="font-weight:600">Pick the server with the lower number for you both. Room codes know their server, so your partner just types the code.</p>
       <label class="field">Your name <input data-name maxlength="14" placeholder="Your name" autocomplete="off"></label>
       <div class="row" style="justify-content:flex-start">
         <button class="btn" data-quick>Quick race</button>
@@ -53,6 +58,26 @@ export function showTitle(parent: HTMLElement, h: { onPractice: (character: stri
   let character = savedCharacter();
   q<HTMLElement>('[data-picker]').replaceWith(characterCards(character, (id) => { character = id; saveCharacter(id); }));
   const say = (t: string) => { msg.hidden = !t; msg.textContent = t; };
+  // server switch: remembered choice, otherwise whichever answers fastest
+  let chosen: RaceServer['id'] | '' = (store.get('tr-region') as RaceServer['id']) || '';
+  const buttons = [...screen.querySelectorAll<HTMLButtonElement>('[data-srv]')];
+  const showChoice = () => buttons.forEach((b) => { b.classList.toggle('on', b.dataset.srv === chosen); b.setAttribute('aria-checked', String(b.dataset.srv === chosen)); });
+  buttons.forEach((b) => (b.onclick = () => { chosen = b.dataset.srv as RaceServer['id']; store.set('tr-region', chosen); showChoice(); }));
+  if (!chosen) chosen = 'us';
+  showChoice();
+  const autoPick = !store.get('tr-region');
+  const pings = new Map<string, number>();
+  for (const sv of SERVERS) {
+    const label = buttons.find((b) => b.dataset.srv === sv.id)!.querySelector('[data-ms]')!;
+    const slow = window.setTimeout(() => { label.textContent = 'waking up…'; }, 3000);
+    measurePing(sv).then((ms) => {
+      window.clearTimeout(slow);
+      label.textContent = ms === null ? 'not reachable' : `${ms} ms`;
+      label.classList.toggle('good', ms !== null && ms < 150);
+      if (ms !== null) pings.set(sv.id, ms);
+      if (autoPick && !store.get('tr-region') && pings.size) { chosen = [...pings.entries()].sort((a, b) => a[1] - b[1])[0][0] as RaceServer['id']; showChoice(); }
+    });
+  }
   const close = () => { screen.remove(); window.removeEventListener('keydown', onKey); };
   const busy = (on: boolean) => screen.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = on));
 
@@ -62,7 +87,8 @@ export function showTitle(parent: HTMLElement, h: { onPractice: (character: stri
     if (kind === 'join' && code.value.trim().length < 4) { say('Type the room code your friend sent you.'); return; }
     busy(true); say(kind === 'create' ? 'Creating a room… (the first visit can take up to a minute while the server wakes up)' : kind === 'quick' ? 'Finding a race…' : 'Joining…');
     try {
-      const url = server.value.trim();
+      const custom = server.value.trim() && server.value.trim() !== defaultServerUrl() ? server.value.trim() : '';
+      const url = custom || (kind === 'join' ? serverForCode(code.value) : SERVERS.find((sv) => sv.id === chosen)!).url;
       const s = kind === 'create' ? await ColyseusSession.create(url, n, character) : kind === 'quick' ? await ColyseusSession.quick(url, n, character) : await ColyseusSession.join(url, code.value, n, character);
       close(); h.onRoom(s);
     } catch (e) {

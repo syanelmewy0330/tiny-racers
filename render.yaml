@@ -11,3 +11,20 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+
+  # Second race server in Europe (Frankfurt), roughly halfway between Dubai and Toronto.
+  # The game's server switch connects here; room codes made here start with "E".
+  - type: web
+    name: tiny-racers-eu
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TR_REGION
+        value: eu

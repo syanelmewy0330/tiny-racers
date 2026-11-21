@@ -19,7 +19,7 @@ const TYPES: Record<string, string> = {
 function serveGame(req: http.IncomingMessage, res: http.ServerResponse): boolean {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname.startsWith('/matchmake')) return false;
-  if (url.pathname === '/health') { res.end('ok'); return true; }
+  if (url.pathname === '/health') { res.writeHead(200, { 'access-control-allow-origin': '*', 'cache-control': 'no-store' }); res.end('ok'); return true; }   // the game measures ping with this
   if (!fs.existsSync(GAME_DIR)) { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('Tiny Racers server is running. (Run "npm run build" to serve the game from here too.)'); return true; }
   let file = path.join(GAME_DIR, decodeURIComponent(url.pathname));
   if (!file.startsWith(GAME_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(GAME_DIR, 'index.html');
