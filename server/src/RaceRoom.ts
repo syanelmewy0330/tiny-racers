@@ -168,9 +168,16 @@ export class RaceRoom extends Room {
     const [x, y, z, yaw, speed] = nums;
     const drift = (m.drift === 1 || m.drift === -1 ? m.drift : 0) as -1 | 0 | 1;
     const now = this.clock.currentTime;
+    const t = Number(m.t);
+    const sentAt = Number.isFinite(t) ? +t.toFixed(3) : undefined;
 
     if (this.phase === 'racing' && p.finishedAt === null && p.lastSnapAt > 0) {
-      const dt = Math.max(0.03, (now - p.lastSnapAt) / 1000);
+      // Over long distances updates often arrive in bunches, so the time between arrivals
+      // says little. Use the sender's own timestamps, but never more than the real time
+      // since the last update plus half a second.
+      const serverDt = (now - p.lastSnapAt) / 1000;
+      const sentDt = sentAt !== undefined && p.snap.t !== undefined ? sentAt - p.snap.t : 0;
+      const dt = Math.max(0.03, serverDt, Math.min(sentDt, serverDt + 0.5));
       const moved = Math.hypot(x - p.snap.x, z - p.snap.z);
       const near = nearest(PATH, x, z, p.index);
       const isRespawn = near.dist < 1.5 && Math.abs(indexDelta(PATH, p.index, near.i)) < 40;
@@ -179,7 +186,7 @@ export class RaceRoom extends Room {
         return;
       }
     }
-    p.snap = { x, y, z, yaw, speed, drift };
+    p.snap = { x, y, z, yaw, speed, drift, t: sentAt };
     p.lastSnapAt = now;
 
     if (this.phase === 'racing' && p.finishedAt === null) {

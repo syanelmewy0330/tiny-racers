@@ -102,6 +102,7 @@ export class ColyseusSession implements RaceSession {
     this.room.send('snap', {
       x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +s.z.toFixed(2),
       yaw: +s.yaw.toFixed(3), speed: +s.speed.toFixed(1), drift: s.drift,
+      t: +(performance.now() / 1000).toFixed(3),   // lets others replay our moves at the right pace
     });
   }
 

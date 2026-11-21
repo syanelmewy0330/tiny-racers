@@ -4,6 +4,8 @@ export interface KartSnapshot {
   yaw: number;
   speed: number;
   drift: -1 | 0 | 1;
+  /** When the sender's computer took this snapshot, in seconds on its own clock. */
+  t?: number;
 }
 
 export interface ControlInput {
