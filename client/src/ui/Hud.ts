@@ -355,6 +355,12 @@ export class Hud {
     if (name && name !== was) { it.classList.remove('got'); void it.offsetWidth; it.classList.add('got'); }
   }
 
+  /** A quick white-yellow flash over the screen (struck by Mini Thunder). */
+  flash() {
+    const f = document.createElement('div'); f.className = 'rh-flash';
+    this.root.append(f); setTimeout(() => f.remove(), 600);
+  }
+
   /** While the slot spins after driving through an item box. */
   setItemRolling(iconSvg: string) {
     const it = this.els.item;
