@@ -27,6 +27,10 @@ export class KartModel {
   private steerSmooth = 0;
   private lastSpeed = 0;
   private pitch = 0;
+  private bodyYaw = 0;
+  private spinLeft = 0; private spinTotal = 1;
+  /** Hit by a banana peel: the kart spins round twice (visual only). */
+  spin(seconds = 1.1) { this.spinLeft = this.spinTotal = seconds; this.anim.react(); }
 
   constructor(readonly ch: CharacterDef, kart: KartDef | string = signatureKart(ch.id), readonly paint = 0) {
     this.kartDef = typeof kart === 'string' ? kartById(kart) : kart;
@@ -91,7 +95,7 @@ export class KartModel {
     for (const o of [r.head, r.torso, r.armL, r.armR, r.tail, ...r.eyes, ...r.ears, this.kart.steering, ...this.sparks, ...this.flames]) if (o) keep.add(o);
     for (const w of this.kart.wheels) { keep.add(w.pivot); keep.add(w.spin); }
     this.anim.setMood(mood);
-    this.steerSmooth = 0; this.lastSpeed = 0; this.pitch = 0;
+    this.steerSmooth = 0; this.lastSpeed = 0; this.pitch = 0; this.bodyYaw = 0;
     for (const s of this.smoke) { s.life = 0; s.m.visible = false; }
     mergeStill(this.body, keep, liveMats);
     // tiny pieces (eyes, buttons, bolts) don't cast a visible shadow: skip them in the shadow pass
@@ -126,7 +130,11 @@ export class KartModel {
     const accel = (speed - this.lastSpeed) / Math.max(dt, 1e-3); this.lastSpeed = speed;
     this.pitch += (THREE.MathUtils.clamp(-accel * 0.004, -0.06, 0.06) - this.pitch) * Math.min(1, dt * 4);
     const targetYaw = driftDir * 0.38, targetRoll = -driftDir * 0.09 - st * 0.05 * Math.min(1, Math.abs(speed) / 20);
-    this.body.rotation.y += (targetYaw - this.body.rotation.y) * Math.min(1, dt * 8);
+    this.bodyYaw += (targetYaw - this.bodyYaw) * Math.min(1, dt * 8);
+    // spin-out: two quick turns that slow down, then straighten up
+    let spin = 0;
+    if (this.spinLeft > 0) { this.spinLeft = Math.max(0, this.spinLeft - dt); const k = 1 - this.spinLeft / this.spinTotal; spin = (1 - (1 - k) * (1 - k)) * Math.PI * 4; }
+    this.body.rotation.y = this.bodyYaw + spin;
     this.body.rotation.z += (targetRoll - this.body.rotation.z) * Math.min(1, dt * 8);
     this.body.rotation.x = this.pitch;
     this.body.position.y = Math.abs(speed) > 1 ? Math.sin(time * 30) * 0.015 * Math.min(1, Math.abs(speed) / 10) : 0;

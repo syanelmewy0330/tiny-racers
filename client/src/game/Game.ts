@@ -18,6 +18,8 @@ import { OfflineSession, type RaceSession } from '../net/Network';
 import type { ColyseusSession } from '../net/ColyseusSession';
 import { RemoteKarts } from './RemoteKarts';
 import { Look } from './Look';
+import { Powerups, ITEM_ICONS } from './Powerups';
+import { ITEMS } from '@shared/items';
 
 const STEP = 1 / PHYSICS_HZ;
 const KART_RADIUS = 0.75;
@@ -57,6 +59,7 @@ export class Game {
   private sendTimer = 0;
   readonly hud: Hud;
   private look!: Look;
+  private items: Powerups;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -79,6 +82,16 @@ export class Game {
     this.rig = new CameraRig(this.camera);
     this.remotes = new RemoteKarts(this.scene, this.world);
     this.race = new RaceTracker(this.track.path);
+    this.items = new Powerups(this.scene, this.track.path, this.track.def.roadHalfWidth);
+    this.items.onSlot = (item, uses, rolling) => {
+      if (rolling) this.hud.setItemRolling(ITEM_ICONS[rolling]);
+      else this.hud.setItem(item ? ITEMS[item].name : null, item ? ITEM_ICONS[item] : '', uses);
+    };
+    this.items.onSay = (t) => this.hud.say(t, 1.2);
+    this.items.onBoost = () => this.kart.boost(1.0, 'item');
+    this.items.onSpin = () => { this.kart.spinOut(1.1); this.model.spin(1.1); };
+    this.items.racerRoot = (id) => id === 'me' ? this.model.root : this.remotes.model(id)?.root ?? null;
+    this.items.spinRacer = (id) => this.remotes.model(id)?.spin(1.1);
 
     this.hud = new Hud(uiRoot);
     this.hud.onRestart = () => this.startRace();
@@ -91,7 +104,7 @@ export class Game {
     // switching to another tab pauses a practice race
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.mode === 'race' && !this.online && !this.hud.paused) this.openPause(); });
     this.hud.setTrack(this.track.path.pts);
-    this.kart.onBoost = (k) => { this.model.react(); this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!'); };
+    this.kart.onBoost = (k) => { this.model.react(); if (k !== 'item') this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!'); };
     // new laps are announced by the HUD's lap banner
     this.race.onFinish = () => {
       if (this.online) return;
@@ -123,6 +136,7 @@ export class Game {
     this.placeOnGrid(0);
     this.wentGo = false;
     this.rig.snap();
+    this.items.start(null);
     this.firstRaceHelp();
   }
 
@@ -149,7 +163,7 @@ export class Game {
     this.hud.closePause(); this.hud.hideResults();
     this.raceSerial++;
     if (this.online) { this.leaveRoom(); return; }
-    this.mode = 'title'; this.hud.show(false);
+    this.mode = 'title'; this.hud.show(false); this.items.stop();
     this.onMenu?.();
   }
 
@@ -159,6 +173,7 @@ export class Game {
     s.events = {
       world: (w) => {
         this.meView = w.players.find((p) => p.id === s.me) ?? null;
+        this.items.onWorld(w, s.me);
         // missed "GO" while reconnecting: catch up with the server
         if (this.mode === 'race' && w.phase === 'racing' && this.race.phase === 'countdown') { this.race.phase = 'racing'; this.race.countdown = 0; }
         if (this.meView && this.meView.character !== this.characterId) this.setCharacter(this.meView.character);
@@ -173,9 +188,13 @@ export class Game {
         this.countdownEndsAt = this.time + d.countdown;
         this.wentGo = false; this.rig.snap();
         this.hud.closePause();
+        this.items.start(s);
         this.firstRaceHelp();
         this.onRaceStarted?.();
       },
+      itemGot: (d) => this.items.onGot(d),
+      itemUsed: (d) => this.items.onUsed(d, s.me),
+      itemHit: (d) => this.items.onHit(d, s.me),
       go: () => { this.race.phase = 'racing'; this.race.countdown = 0; },
       correct: (d) => this.kart.placeAt(d.x, d.z, d.yaw),
       finish: (d) => {
@@ -204,7 +223,7 @@ export class Game {
     if (!this.online) return;
     this.online.leave();
     this.online = null; this.session = new OfflineSession(); this.meView = null;
-    this.remotes.clear();
+    this.remotes.clear(); this.items.stop();
     this.mode = 'title'; this.hud.show(false); this.hud.closePause();
     this.onLeftRoom?.(reason);
   }
@@ -258,6 +277,15 @@ export class Game {
     }
 
     const locked = this.mode !== 'race' || this.race.phase !== 'racing';
+    // power-ups: drive through boxes, slip on peels, E / LB to use
+    const useItem = this.input.takeItem();
+    if (!locked && !paused) {
+      const me = this.online?.me ?? 'me';
+      const players = this.online?.latest?.players;
+      const place = this.meView?.place ?? 1, of = players?.length ?? 1;
+      this.items.step(me, p.x, p.z, place, of);
+      if (useItem) this.items.use(me, p.x, p.z, this.kart.yaw);
+    }
     this.kart.applyInput(input, STEP, locked);
     this.remotes.update(STEP, this.time);
     this.world.step();
@@ -316,6 +344,7 @@ export class Game {
         if (!this.online || this.online.connection === 'online') this.session.sendSnapshot(this.kart.snapshot());
       }
     }
+    this.items.frame(dt, this.time);
     this.look.render(dt, this.mode === 'race' && this.kart.boosting ? 1 : 0);
   }
 }

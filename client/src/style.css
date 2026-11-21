@@ -279,3 +279,8 @@ details[open] { display: flex; flex-direction: column; gap: 6px; }
 .rr-btn.warn { background: var(--red); color: var(--off); box-shadow: 0 calc(var(--u) * 5) 0 #9e2e2e; }
 .rr-btn:focus-visible, .rr-btn:focus { outline: calc(var(--u) * 3) solid var(--off); outline-offset: calc(var(--u) * 4); }
 .rh-help .pad { grid-column: 1 / -1; font-size: calc(var(--u) * 11); color: rgba(242, 242, 240, .6); font-weight: 600; margin-top: calc(var(--u) * 2); }
+
+/* power-ups: the slot spins while rolling */
+.rh-item.rolling svg { animation: rh-roll .09s linear infinite; opacity: .85; }
+@keyframes rh-roll { from { transform: translateY(-6%); } to { transform: translateY(6%); } }
+.rh-item-label .uses { color: var(--yellow, #FCC945); font-style: italic; }

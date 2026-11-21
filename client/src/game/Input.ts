@@ -7,14 +7,15 @@ export type MenuKey = 'up' | 'down' | 'ok' | 'back';
 
 /**
  * Reads the keyboard and any connected gamepad.
- * Keyboard: WASD or arrows drive, Space or Shift drifts, R respawns, Esc or P pauses.
+ * Keyboard: WASD or arrows drive, Space or Shift drifts, E uses an item, R respawns, Esc or P pauses.
  * Gamepad: left stick or d-pad steers, RT or A accelerates, LT or B brakes,
- * RB, LB or X drifts, Y respawns, Start pauses.
+ * RB or X drifts, LB uses an item, Y respawns, Start pauses.
  */
 export class Input {
   private down = new Set<string>();
   private respawnQueued = false;
   private pauseQueued = false;
+  private itemQueued = false;
   private menuQueue: MenuKey[] = [];
   private padPrev: boolean[] = [];
   /** Called when a controller is plugged in or unplugged. */
@@ -27,6 +28,7 @@ export class Input {
       if (!typing && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k)) e.preventDefault();
       if (k === 'KeyR' && !e.repeat && !typing) this.respawnQueued = true;
       if ((k === 'Escape' || k === 'KeyP') && !e.repeat && !typing) this.pauseQueued = true;
+      if (k === 'KeyE' && !e.repeat && !typing) this.itemQueued = true;
       this.down.add(k);
     });
     window.addEventListener('keyup', (e) => this.down.delete(e.code));
@@ -51,6 +53,7 @@ export class Input {
     const edge = (i: number) => pressed(i) && !this.padPrev[i];
     if (edge(PAD.START)) this.pauseQueued = true;
     if (edge(PAD.Y)) this.respawnQueued = true;
+    if (edge(PAD.LB)) this.itemQueued = true;
     if (edge(PAD.UP)) this.menuQueue.push('up');
     if (edge(PAD.DOWN)) this.menuQueue.push('down');
     if (edge(PAD.A)) this.menuQueue.push('ok');
@@ -79,7 +82,7 @@ export class Input {
       if (b(PAD.RIGHT)) steer = -1;
       throttle ||= v(PAD.RT) > 0.25 || b(PAD.A);
       brake ||= v(PAD.LT) > 0.25 || b(PAD.B);
-      drift ||= b(PAD.RB) || b(PAD.LB) || b(PAD.X);
+      drift ||= b(PAD.RB) || b(PAD.X);
     }
     return { throttle, brake, steer, drift };
   }
@@ -88,6 +91,13 @@ export class Input {
   takeRespawn(): boolean {
     const r = this.respawnQueued;
     this.respawnQueued = false;
+    return r;
+  }
+
+  /** True once per press of E or the gamepad's LB. */
+  takeItem(): boolean {
+    const r = this.itemQueued;
+    this.itemQueued = false;
     return r;
   }
 

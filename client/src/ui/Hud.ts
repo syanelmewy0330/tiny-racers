@@ -83,7 +83,7 @@ export class Hud {
         <span><b class="kc">R</b></span><span>Back on track</span>
         <span><b class="kc">Esc</b></span><span>Pause menu</span>
         <span><b class="kc">H</b></span><span>Hide controls</span>
-        <div class="pad">Controller: stick steers, RT go, LT brake, RB drift, Y reset, Start pause</div>
+        <div class="pad">Controller: stick steers, RT go, LT brake, RB drift, LB item, Y reset, Start pause</div>
       </div>
       <div class="rh-item empty" data-item><svg viewBox="0 0 100 100" data-icon aria-hidden="true"></svg><div class="key">E</div></div>
       <div class="rh-item-label" data-ilabel><span class="cap">NO ITEM</span></div>
@@ -344,13 +344,23 @@ export class Hud {
     setTimeout(() => { box.textContent = ''; }, 4200);
   }
 
-  /** Items arrive with the power-ups milestone; until then the slot stays empty. */
-  setItem(name: string | null, iconSvg = '') {
+  /** The held power-up (or an empty slot). `uses` above 1 shows as ×3, ×2. */
+  setItem(name: string | null, iconSvg = '', uses = 1) {
     const it = this.els.item;
-    it.classList.toggle('empty', !name);
+    const was = it.dataset.held ?? '';
+    it.classList.toggle('empty', !name); it.classList.remove('rolling');
     (it.querySelector('[data-icon]') as HTMLElement).innerHTML = iconSvg;
-    this.els.ilabel.innerHTML = name ? `${name}<span class="cap">PRESS E</span>` : '<span class="cap">NO ITEM</span>';
-    if (name) { it.classList.remove('got'); void it.offsetWidth; it.classList.add('got'); }
+    this.els.ilabel.innerHTML = name ? `${name}${uses > 1 ? ` <b class="uses">×${uses}</b>` : ''}<span class="cap">PRESS E</span>` : '<span class="cap">NO ITEM</span>';
+    it.dataset.held = name ?? '';
+    if (name && name !== was) { it.classList.remove('got'); void it.offsetWidth; it.classList.add('got'); }
+  }
+
+  /** While the slot spins after driving through an item box. */
+  setItemRolling(iconSvg: string) {
+    const it = this.els.item;
+    it.classList.remove('empty'); it.classList.add('rolling'); it.dataset.held = '';
+    (it.querySelector('[data-icon]') as HTMLElement).innerHTML = iconSvg;
+    this.els.ilabel.innerHTML = '<span class="cap">ITEM BOX!</span>';
   }
 
   /** Fill the results card: a heading, an optional big time, ranked rows and buttons. */

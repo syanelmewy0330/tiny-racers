@@ -1,6 +1,6 @@
 import { Client, type Room } from '@colyseus/sdk';
 import type { KartSnapshot } from '@shared/types';
-import type { WorldMessage, ResultRow } from '@shared/protocol';
+import type { WorldMessage, ResultRow, ItemGotMessage, ItemUsedMessage, ItemHitMessage } from '@shared/protocol';
 import type { RaceSession } from './Network';
 
 export interface SessionEvents {
@@ -15,6 +15,10 @@ export interface SessionEvents {
   notice?: (text: string) => void;
   /** The connection dropped (true) or came back (false). */
   reconnecting?: (on: boolean) => void;
+  /** Power-ups: you got an item, someone used one, someone hit a banana peel. */
+  itemGot?: (d: ItemGotMessage) => void;
+  itemUsed?: (d: ItemUsedMessage) => void;
+  itemHit?: (d: ItemHitMessage) => void;
 }
 
 export type ConnectionState = 'online' | 'reconnecting';
@@ -53,6 +57,9 @@ export class ColyseusSession implements RaceSession {
     room.onMessage('race:finish', (d) => this.events.finish?.(d));
     room.onMessage('race:results', (d: { results: ResultRow[] }) => this.events.results?.(d.results));
     room.onMessage('correct', (d) => this.events.correct?.(d));
+    room.onMessage('item:got', (d: ItemGotMessage) => this.events.itemGot?.(d));
+    room.onMessage('item:used', (d: ItemUsedMessage) => this.events.itemUsed?.(d));
+    room.onMessage('item:hit', (d: ItemHitMessage) => this.events.itemHit?.(d));
     room.onMessage('notice', (d: { text: string }) => { this.lastNotice = { text: d.text, at: performance.now() }; this.events.notice?.(d.text); });
     // Colyseus retries by itself when the connection drops; the server keeps our place for 20 s.
     room.onDrop(() => { this.connection = 'reconnecting'; this.pingMs = null; this.events.reconnecting?.(true); });
@@ -97,6 +104,11 @@ export class ColyseusSession implements RaceSession {
       yaw: +s.yaw.toFixed(3), speed: +s.speed.toFixed(1), drift: s.drift,
     });
   }
+
+  /** Power-ups: the server decides what you get and whether hits count. */
+  pickBox(box: number) { this.room.send('item:pick', box); }
+  useItem() { this.room.send('item:use'); }
+  hitHazard(id: number) { this.room.send('item:hit', id); }
 
   leave() { this.leaving = true; window.clearInterval(this.pingTimer); this.room.leave(true).catch(() => {}); }
 }
