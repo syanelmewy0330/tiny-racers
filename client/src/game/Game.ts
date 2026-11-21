@@ -40,6 +40,8 @@ export class Game {
   private session: RaceSession = new OfflineSession();
   private clock = new THREE.Clock();
   private acc = 0;
+  /** Where the kart was one physics step ago, so drawn frames can sit smoothly between steps. */
+  private prevPos = { x: 0, y: 0, z: 0 }; private prevYaw = 0;
   private time = 0;
   private mode: 'title' | 'race' = 'title';
   private remotes: RemoteKarts;
@@ -300,7 +302,8 @@ export class Game {
       this.kart.magnetTarget = path.pts[(this.magnetHint + 14) % N];
     }
     this.kart.applyInput(input, STEP, locked);
-    this.remotes.update(STEP, this.time);
+    const was = this.kart.body.translation();
+    this.prevPos = { x: was.x, y: was.y, z: was.z }; this.prevYaw = this.kart.yaw;
     this.world.step();
     this.kart.syncFromPhysics();
     if (this.kart.body.translation().y < -5) this.respawn();
@@ -316,14 +319,19 @@ export class Game {
     // practice freezes while paused; online races carry on
     const frozen = this.hud.paused && !this.online;
     if (frozen) this.acc = 0; else this.acc += dt;
+    this.remotes.update(dt, this.time);   // every drawn frame, so rivals glide even on fast screens
     while (this.acc >= STEP) { this.physicsStep(); this.acc -= STEP; }
     if (this.peekUntil === Infinity && this.wentGo) this.peekUntil = this.time + 5;
     if (this.peekUntil > 0 && this.time > this.peekUntil) { this.peekUntil = -1; this.hud.peekHelp(false); }
 
-    // visuals follow physics
-    const p = this.kart.body.translation();
+    // visuals follow physics, blended between the last two steps so motion is even on any screen
+    const now = this.kart.body.translation(), f = this.acc / STEP, a = this.prevPos;
+    const jumped = Math.hypot(now.x - a.x, now.z - a.z) > 5;   // respawn: no blending
+    const p = jumped ? now : { x: a.x + (now.x - a.x) * f, y: a.y + (now.y - a.y) * f, z: a.z + (now.z - a.z) * f };
+    let dy = this.kart.yaw - this.prevYaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+    const yaw = jumped ? this.kart.yaw : this.prevYaw + dy * f;
     this.model.root.position.set(p.x, p.y - KART_RADIUS, p.z);
-    this.model.root.rotation.y = this.kart.yaw;
+    this.model.root.rotation.y = yaw;
     const speed = this.kart.forwardSpeed;
     this.model.animate(dt, speed, this.kart.steerVisual, this.kart.driftDir, this.kart.driftLevel, this.kart.boosting, this.time);
     this.track.update(this.time);
@@ -335,7 +343,7 @@ export class Game {
       this.camera.position.set(p.x + Math.sin(a) * 11, 4.5, p.z + Math.cos(a) * 11);
       this.camera.lookAt(p.x, 1.2, p.z);
     } else {
-      this.rig.update(dt, target, this.kart.yaw, speed);
+      this.rig.update(dt, target, yaw, speed);
       const counting = this.race.phase === 'countdown';
       if (!counting && !this.wentGo) { this.wentGo = true; this.hud.flashGo(); }
       const players = this.online?.latest?.players ?? null;
@@ -352,8 +360,8 @@ export class Game {
       });
       this.sendTimer += dt;
       // 20 position updates a second; none while reconnecting (they would only pile up)
-      if (this.sendTimer > 0.05) {
-        this.sendTimer = 0;
+      if (this.sendTimer >= 0.05) {
+        this.sendTimer = this.sendTimer > 0.1 ? 0 : this.sendTimer - 0.05;   // a steady 20 a second
         if (!this.online || this.online.connection === 'online') this.session.sendSnapshot(this.kart.snapshot());
       }
     }
