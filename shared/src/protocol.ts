@@ -40,6 +40,6 @@ export interface ItemGotMessage { item: ItemId; uses: number }
 /** Server to everyone when a racer uses an item. */
 export interface ItemUsedMessage { id: string; item: ItemId; usesLeft: number; hazard?: Hazard }
 /** Server to everyone when a racer hits a banana peel (blocked = their shield took it). */
-export interface ItemHitMessage { victim: string; hazard: number; blocked: boolean }
+export interface ItemHitMessage { victim: string; hazard: number; kind: 'banana' | 'bounce' | 'rocket'; blocked: boolean }
 
 export interface ResultRow { id: string; name: string; character: string; place: number; time: number | null }

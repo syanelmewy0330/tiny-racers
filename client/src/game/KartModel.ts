@@ -29,6 +29,9 @@ export class KartModel {
   private pitch = 0;
   private bodyYaw = 0;
   private spinLeft = 0; private spinTotal = 1;
+  private hopLeft = 0;
+  /** A rival hit a Bounce Trap: hop the model up and down (their own game moves the real kart). */
+  hop() { this.hopLeft = 0.8; this.anim.react(); }
   /** Hit by a banana peel: the kart spins round twice (visual only). */
   spin(seconds = 1.1) { this.spinLeft = this.spinTotal = seconds; this.anim.react(); }
 
@@ -138,6 +141,7 @@ export class KartModel {
     this.body.rotation.z += (targetRoll - this.body.rotation.z) * Math.min(1, dt * 8);
     this.body.rotation.x = this.pitch;
     this.body.position.y = Math.abs(speed) > 1 ? Math.sin(time * 30) * 0.015 * Math.min(1, Math.abs(speed) / 10) : 0;
+    if (this.hopLeft > 0) { this.hopLeft = Math.max(0, this.hopLeft - dt); const k = 1 - this.hopLeft / 0.8; this.body.position.y += Math.sin(k * Math.PI) * 2.2; }
 
     this.anim.update(dt, time, { speed, steer: st, drift: driftDir, boosting });
     this.kart.idle?.(time, dt, speed);

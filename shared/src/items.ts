@@ -4,16 +4,23 @@
  * races (run on the server), so both behave the same.
  */
 import type { TrackPath } from './trackMath';
-import { yawAt } from './trackMath';
+import { yawAt, nearest } from './trackMath';
 
-export type ItemId = 'juice' | 'shield' | 'banana';
+export type ItemId = 'juice' | 'shield' | 'banana' | 'rocket' | 'bounce';
 
 export interface ItemInfo { id: ItemId; name: string; uses: number; blurb: string }
 export const ITEMS: Record<ItemId, ItemInfo> = {
   juice: { id: 'juice', name: 'Turbo Juice', uses: 3, blurb: 'Three sips, three quick boosts.' },
   shield: { id: 'shield', name: 'Bubble Shield', uses: 1, blurb: 'Blocks one hit for 10 seconds.' },
   banana: { id: 'banana', name: 'Banana Slip', uses: 1, blurb: 'Drops a banana peel that spins racers out.' },
+  rocket: { id: 'rocket', name: 'Rocket Pop', uses: 1, blurb: 'A firework that flies along the track and spins out the first racer it reaches.' },
+  bounce: { id: 'bounce', name: 'Bounce Trap', uses: 1, blurb: 'A springy pad that bounces racers into the air and slows them.' },
 };
+
+/** Rocket Pop flies along the track at this speed (m/s) for this long. */
+export const ROCKET_SPEED = 52;
+export const ROCKET_LIFE_S = 3.6;
+export const ROCKET_REACH = 2.0;
 
 /** Where item boxes sit around the lap (0..1), clear of the boost pads. */
 const ROWS = [0.07, 0.3, 0.52, 0.74];
@@ -26,14 +33,30 @@ export const HAZARD_REACH = 1.7;
 /** The slot spins this long before it shows what you got. */
 export const ROLL_MS = 1100;
 export const SHIELD_MS = 10_000;
-/** Jellies melt away after this long, and there are never more than this many. */
+/** Peels and traps disappear after this long, and there are never more than this many. */
 const HAZARD_LIFE_MS = 60_000;
 const MAX_HAZARDS = 16;
 /** The racer who dropped a banana peel can't hit it for this long (it's right under them). */
 export const OWNER_GRACE_MS = 1200;
 
 export interface ItemBox { id: number; x: number; z: number }
-export interface Hazard { id: number; kind: 'banana'; x: number; z: number; owner: string; at: number }
+/**
+ * Something an item put on the track. Banana peels and Bounce Traps sit still at x, z.
+ * A Rocket Pop starts at path sample i0, `off` metres to the side of the centre line, and
+ * flies on from there (see rocketAt), so every computer can work out where it is.
+ */
+export interface Hazard { id: number; kind: 'banana' | 'bounce' | 'rocket'; x: number; z: number; owner: string; at: number; i0?: number; off?: number }
+
+/** Where a Rocket Pop is, `age` seconds after launch. It follows the road, keeping to its lane. */
+export function rocketAt(path: TrackPath, h: Hazard, age: number) {
+  const N = path.pts.length;
+  const f = (h.i0 ?? 0) + 2 + (ROCKET_SPEED * Math.max(0, age)) / path.spacing;
+  const i = Math.floor(f), t = f - i;
+  const a = path.pts[((i % N) + N) % N], b = path.pts[(((i + 1) % N) + N) % N];
+  const yaw = yawAt(path, ((i % N) + N) % N);
+  const off = h.off ?? 0;
+  return { x: a.x + (b.x - a.x) * t + Math.cos(yaw) * off, z: a.z + (b.z - a.z) * t - Math.sin(yaw) * off, yaw };
+}
 
 /** Item boxes in rows across the road. */
 export function itemBoxes(path: TrackPath, roadHalfWidth: number): ItemBox[] {
@@ -59,6 +82,8 @@ export function rollItem(place: number, of: number, rnd = Math.random): ItemId {
     ['juice', 1 + back * 4],
     ['shield', 3 - back * 2],
     ['banana', 3 - back * 1.5],
+    ['rocket', 1 + back * 2.5],
+    ['bounce', 2.5 - back],
   ];
   let r = rnd() * weights.reduce((s, [, w]) => s + w, 0);
   for (const [id, w] of weights) { r -= w; if (r <= 0) return id; }
@@ -68,7 +93,7 @@ export function rollItem(place: number, of: number, rnd = Math.random): ItemId {
 interface Holder { item: ItemId | null; uses: number; shieldUntil: number }
 
 export type UseResult = { item: ItemId; usesLeft: number; hazard?: Hazard } | null;
-export type HitResult = { hazard: number; victim: string; blocked: boolean } | null;
+export type HitResult = { hazard: number; kind: Hazard['kind']; victim: string; blocked: boolean } | null;
 
 /** Boxes, held items, shields and dropped banana peels for one race. */
 export class ItemWorld {
@@ -78,7 +103,7 @@ export class ItemWorld {
   private holders = new Map<string, Holder>();
   private nextId = 1;
 
-  constructor(path: TrackPath, roadHalfWidth: number) { this.boxes = itemBoxes(path, roadHalfWidth); }
+  constructor(private path: TrackPath, roadHalfWidth: number) { this.boxes = itemBoxes(path, roadHalfWidth); }
 
   reset() { this.hazards = []; this.hiddenUntil.clear(); this.holders.clear(); }
   remove(player: string) { this.holders.delete(player); }
@@ -112,17 +137,26 @@ export class ItemWorld {
     return h.item;
   }
 
-  /** Use the held item. A banana peel is dropped just behind the kart. */
+  /** Use the held item. Peels and traps are dropped just behind the kart; rockets fire ahead. */
   use(player: string, now: number, x: number, z: number, yaw: number): UseResult {
     const h = this.holder(player);
     if (!h.item) return null;
     const item = h.item;
     let hazard: Hazard | undefined;
     if (item === 'shield') h.shieldUntil = now + SHIELD_MS;
-    if (item === 'banana') {
-      hazard = { id: this.nextId++, kind: 'banana', x: x - Math.sin(yaw) * 2.6, z: z - Math.cos(yaw) * 2.6, owner: player, at: now };
+    if (item === 'banana' || item === 'bounce') {
+      hazard = { id: this.nextId++, kind: item, x: x - Math.sin(yaw) * 2.6, z: z - Math.cos(yaw) * 2.6, owner: player, at: now };
+    }
+    if (item === 'rocket') {
+      const near = nearest(this.path, x, z);
+      const p = this.path.pts[near.i], ry = yawAt(this.path, near.i);
+      const off = Math.max(-5, Math.min(5, (x - p.x) * Math.cos(ry) - (z - p.z) * Math.sin(ry)));
+      hazard = { id: this.nextId++, kind: 'rocket', x, z, owner: player, at: now, i0: near.i, off };
+    }
+    if (hazard) {
       this.hazards.push(hazard);
-      if (this.hazards.length > MAX_HAZARDS) this.hazards.shift();
+      const old = this.hazards.findIndex((h) => h.kind !== 'rocket');
+      if (this.hazards.length > MAX_HAZARDS && old >= 0) this.hazards.splice(old, 1);
     }
     h.uses -= 1;
     if (h.uses <= 0) { h.item = null; h.uses = 0; }
@@ -134,14 +168,15 @@ export class ItemWorld {
     const i = this.hazards.findIndex((hz) => hz.id === hazardId);
     if (i < 0) return null;
     const hz = this.hazards[i];
-    if (hz.owner === player && now - hz.at < OWNER_GRACE_MS) return null;
+    if (hz.owner === player && (hz.kind === 'rocket' || now - hz.at < OWNER_GRACE_MS)) return null;
+    if (hz.kind === 'rocket' && now - hz.at > (ROCKET_LIFE_S + 1.5) * 1000) return null;
     this.hazards.splice(i, 1);
     const h = this.holder(player);
     const blocked = h.shieldUntil > now;
     if (blocked) h.shieldUntil = 0;
-    return { hazard: hazardId, victim: player, blocked };
+    return { hazard: hazardId, kind: hz.kind, victim: player, blocked };
   }
 
-  /** Forget melted banana peels. */
-  tick(now: number) { this.hazards = this.hazards.filter((h) => now - h.at < HAZARD_LIFE_MS); }
+  /** Forget rockets that flew out and peels or traps that have been lying around too long. */
+  tick(now: number) { this.hazards = this.hazards.filter((h) => now - h.at < (h.kind === 'rocket' ? (ROCKET_LIFE_S + 1.5) * 1000 : HAZARD_LIFE_MS)); }
 }
