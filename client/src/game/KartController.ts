@@ -63,6 +63,13 @@ export class KartController {
     this.spinTime = seconds; this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0;
   }
 
+  /** Hit a Bounce Trap: thrown into the air, most speed gone, a moment without control. */
+  bounce() {
+    this.spinTime = 0.7; this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0;
+    this.vx *= 0.35; this.vz *= 0.35;
+    this.body.setLinvel({ x: this.vx, y: 9, z: this.vz }, true);
+  }
+
   /** Runs once per physics step, before world.step(). */
   applyInput(input: ControlInput, dt: number, locked: boolean) {
     const t = this.t;

@@ -92,6 +92,8 @@ export class Game {
     this.items.onSpin = () => { this.kart.spinOut(1.1); this.model.spin(1.1); };
     this.items.racerRoot = (id) => id === 'me' ? this.model.root : this.remotes.model(id)?.root ?? null;
     this.items.spinRacer = (id) => this.remotes.model(id)?.spin(1.1);
+    this.items.onBounce = () => { this.kart.bounce(); this.model.react(); };
+    this.items.hopRacer = (id) => this.remotes.model(id)?.hop();
 
     this.hud = new Hud(uiRoot);
     this.hud.onRestart = () => this.startRace();
