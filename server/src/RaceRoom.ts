@@ -4,7 +4,8 @@ import { CHARACTERS, isCharacterId } from '../../shared/src/characters.ts';
 import { buildPath, nearest, indexDelta } from '../../shared/src/trackMath.ts';
 import { MEADOW_LOOP } from '../../shared/src/tracks/meadowLoop.ts';
 import type { KartSnapshot } from '../../shared/src/types.ts';
-import type { RoomPhase, WorldMessage, PlayerView, ResultRow } from '../../shared/src/protocol.ts';
+import type { RoomPhase, WorldMessage, PlayerView, ResultRow, ItemGotMessage, ItemUsedMessage, ItemHitMessage } from '../../shared/src/protocol.ts';
+import { ItemWorld } from '../../shared/src/items.ts';
 
 const PATH = buildPath(MEADOW_LOOP, 1);
 const N = PATH.pts.length;
@@ -43,6 +44,8 @@ export class RaceRoom extends Room {
   private isPublic = false;
   private autoStartAt = 0;
   private lastResults: ResultRow[] | null = null;
+  /** Power-ups: boxes, held items, shields and jellies. The server decides all of it. */
+  private items = new ItemWorld(PATH, MEADOW_LOOP.roadHalfWidth);
 
   onCreate(options: { public?: boolean } = {}) {
     this.isPublic = !!options.public;
@@ -55,6 +58,11 @@ export class RaceRoom extends Room {
       if (p && (this.phase === 'lobby' || this.phase === 'results')) p.ready = on === true;
     });
     this.onMessage('snap', (client: Client, msg: unknown) => this.onSnap(client, msg));
+    this.onMessage('item:pick', (client: Client, box: unknown) => this.onPick(client, box));
+    this.onMessage('item:use', (client: Client) => this.onUse(client));
+    this.onMessage('item:hit', (client: Client, hazard: unknown) => this.onHit(client, hazard));
+    // automated tests only (never set on the live server): hand a racer a chosen item
+    if (process.env.TR_TEST_ITEMS === '1') this.onMessage('test:give', (client: Client, item: unknown) => { if (typeof item === 'string') this.items.give(client.sessionId, item); });
     // Change racer while waiting in the lobby (not mid-race). Several players may pick the same one.
     this.onMessage('character', (client: Client, id: unknown) => {
       const p = this.players.get(client.sessionId);
@@ -103,6 +111,7 @@ export class RaceRoom extends Room {
   onLeave(client: Client) {
     const p = this.players.get(client.sessionId);
     this.players.delete(client.sessionId);
+    this.items.remove(client.sessionId);
     if (this.hostId === client.sessionId) {
       this.hostId = [...this.players.keys()][0] ?? '';
       const next = this.players.get(this.hostId);
@@ -141,6 +150,7 @@ export class RaceRoom extends Room {
       p.finishedAt = null; p.lastSnapAt = 0; p.ready = false;
     }
     this.lastResults = null;
+    this.items.reset();
     this.broadcast('race:start', { raceId: this.raceId, countdown: COUNTDOWN_SECONDS, grid: Object.fromEntries([...this.players.values()].map((p) => [p.id, p.slot])) });
     this.clock.setTimeout(() => {
       if (this.phase !== 'countdown') return;
@@ -185,6 +195,31 @@ export class RaceRoom extends Room {
     }
   }
 
+  // ---------- power-ups ----------
+  private racing(p: Player | undefined): p is Player { return !!p && this.phase === 'racing' && p.finishedAt === null; }
+
+  private onPick(client: Client, box: unknown) {
+    const p = this.players.get(client.sessionId);
+    if (!this.racing(p) || typeof box !== 'number') return;
+    const order = this.ranking();
+    const item = this.items.pick(p.id, box, this.clock.currentTime, p.snap.x, p.snap.z, order.indexOf(p) + 1, order.length);
+    if (item) client.send('item:got', { item, uses: this.items.held(p.id)?.uses ?? 1 } satisfies ItemGotMessage);
+  }
+
+  private onUse(client: Client) {
+    const p = this.players.get(client.sessionId);
+    if (!this.racing(p)) return;
+    const r = this.items.use(p.id, this.clock.currentTime, p.snap.x, p.snap.z, p.snap.yaw);
+    if (r) this.broadcast('item:used', { id: p.id, item: r.item, usesLeft: r.usesLeft, hazard: r.hazard } satisfies ItemUsedMessage);
+  }
+
+  private onHit(client: Client, hazard: unknown) {
+    const p = this.players.get(client.sessionId);
+    if (!this.racing(p) || typeof hazard !== 'number') return;
+    const r = this.items.hit(p.id, hazard, this.clock.currentTime);
+    if (r) this.broadcast('item:hit', r satisfies ItemHitMessage);
+  }
+
   private ranking(): Player[] {
     return [...this.players.values()].sort((a, b) => {
       if (a.finishedAt !== null && b.finishedAt !== null) return a.finishedAt - b.finishedAt;
@@ -211,19 +246,22 @@ export class RaceRoom extends Room {
     if (this.phase === 'racing') this.checkRaceOver();
     // Quick race rooms start by themselves once at least two racers are waiting.
     if (this.isPublic && (this.phase === 'lobby' || this.phase === 'results')) {
-      const now = this.clock.currentTime;
+      const now = this.clock.currentTime;   // eslint-disable-line no-shadow
       if (this.players.size < 2) this.autoStartAt = 0;
       else if (!this.autoStartAt) this.autoStartAt = now + (this.phase === 'results' ? 20_000 : 15_000);
       else if (now >= this.autoStartAt) this.startRace();
     }
+    const now = this.clock.currentTime;
+    this.items.tick(now);
     const order = this.ranking();
     const players: PlayerView[] = order.map((p, i) => ({
       id: p.id, name: p.name, character: p.character, slot: p.slot, ...p.snap,
       lap: Math.min(LAPS, Math.max(1, Math.floor(p.progress / N) + 1)), place: i + 1, finished: p.finishedAt !== null,
-      ready: p.ready, connected: p.connected,
+      ready: p.ready, connected: p.connected, shield: this.items.shielded(p.id, now),
     }));
     const autoStartIn = this.autoStartAt ? Math.max(0, Math.ceil((this.autoStartAt - this.clock.currentTime) / 1000)) : null;
-    const world: WorldMessage = { phase: this.phase, hostId: this.hostId, code: this.roomId, raceId: this.raceId, isPublic: this.isPublic, autoStartIn, players };
+    const world: WorldMessage = { phase: this.phase, hostId: this.hostId, code: this.roomId, raceId: this.raceId, isPublic: this.isPublic, autoStartIn, players,
+      items: { hidden: this.items.hiddenBoxes(now), hazards: this.items.hazards } };
     this.broadcast('world', world);
   }
 }

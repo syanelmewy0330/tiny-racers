@@ -69,6 +69,9 @@ export class RemoteKarts {
     }
   }
 
+  /** A rival's 3D model (for shields and spin-outs). */
+  model(id: string) { return this.karts.get(id)?.model ?? null; }
+
   /** Where everyone else is right now (for the minimap). */
   positions() { return [...this.karts.values()].map((r) => ({ x: r.x, z: r.z, character: r.model.ch.id })); }
 

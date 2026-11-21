@@ -5,3 +5,4 @@ export * from './trackMath';
 export * from './tracks/meadowLoop';
 export * from './protocol';
 export * from './karts';
+export * from './items';

@@ -31,7 +31,9 @@ export class KartController {
   driftCharge = 0;
   steerVisual = 0;
   /** Set by Game when a mini-turbo or pad fires, for the HUD toast. */
-  onBoost?: (kind: 'pad' | 'mini' | 'super') => void;
+  onBoost?: (kind: 'pad' | 'mini' | 'super' | 'item') => void;
+  /** Seconds left of a spin-out (hit by a banana peel): no control while it lasts. */
+  spinTime = 0;
   private t: ReturnType<typeof tuning>;
   setCharacter(ch: CharacterDef) { this.t = tuning(ch); }
   private driftHeld = false;
@@ -49,17 +51,24 @@ export class KartController {
   /** 0 = none, 1 = blue sparks, 2 = orange sparks (bigger boost on release). */
   get driftLevel() { return this.driftCharge > 1.6 ? 2 : this.driftCharge > 0.7 ? 1 : 0; }
 
-  boost(seconds: number, kind: 'pad' | 'mini' | 'super') {
+  boost(seconds: number, kind: 'pad' | 'mini' | 'super' | 'item') {
     this.boostTime = Math.max(this.boostTime, seconds);
     const f = this.forwardSpeed, need = this.t.maxSpeed + 6;
     if (f < need) { this.vx += Math.sin(this.yaw) * (need - f); this.vz += Math.cos(this.yaw) * (need - f); }
     this.onBoost?.(kind);
   }
 
+  /** Hit by a banana peel: lose control and most of your speed for a moment. */
+  spinOut(seconds = 1.1) {
+    this.spinTime = seconds; this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0;
+  }
+
   /** Runs once per physics step, before world.step(). */
   applyInput(input: ControlInput, dt: number, locked: boolean) {
     const t = this.t;
-    if (locked) input = { throttle: false, brake: false, steer: 0, drift: false };
+    const spinning = this.spinTime > 0;
+    if (spinning) this.spinTime = Math.max(0, this.spinTime - dt);
+    if (locked || spinning) input = { throttle: false, brake: false, steer: 0, drift: false };
     const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);   // forward
     const sx = Math.cos(this.yaw), sz = -Math.sin(this.yaw);  // sideways
     let fwd = this.vx * fx + this.vz * fz;
@@ -83,6 +92,7 @@ export class KartController {
     if (fwd > top) fwd = Math.max(top, fwd - 18 * dt);
     if (fwd < -t.reverseMax) fwd = -t.reverseMax;
     if (this.boosting && fwd < t.maxSpeed) fwd = Math.min(t.boostSpeed, fwd + 30 * dt);
+    if (spinning) fwd *= Math.exp(-2.2 * dt);
 
     // --- steering ---
     const speedFactor = Math.min(1, Math.abs(fwd) / 7) * (1 - 0.25 * Math.min(1, Math.abs(fwd) / 40));
@@ -119,7 +129,7 @@ export class KartController {
     this.body.setTranslation({ x, y: 0.9, z }, true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.yaw = yaw; this.vx = this.vz = 0;
-    this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0;
+    this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0; this.spinTime = 0;
   }
 
   snapshot(): KartSnapshot {
