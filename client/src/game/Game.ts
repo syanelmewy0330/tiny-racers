@@ -366,6 +366,7 @@ export class Game {
   private lastLapHeard = 1;
   private lastSpark = 0;
   private wasOnIce = false;
+  private wasOnMud = false;
   /** Engine, drift, countdown and lap sounds, once per drawn frame. */
   private sounds(counting: boolean, countdown: number | null, lap: number, frozen: boolean) {
     const racing = this.mode === 'race';
@@ -375,6 +376,8 @@ export class Game {
     if (!racing) return;
     if (k.onIce && !this.wasOnIce && Math.abs(k.forwardSpeed) > 6) sfx.play('ice');
     this.wasOnIce = k.onIce;
+    if (k.onMud && !this.wasOnMud && Math.abs(k.forwardSpeed) > 4) sfx.play('mud');
+    this.wasOnMud = k.onMud;
     if (drift > 1 && k.driftLevel > this.lastSpark) sfx.play('drift');
     this.lastSpark = drift ? k.driftLevel : 0;
     if (counting && countdown !== null) {

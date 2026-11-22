@@ -3,7 +3,7 @@
  * One shared instance: `sfx`. Browsers only allow sound after the first click or key press,
  * so the audio starts itself then.
  */
-type Shot = 'drift' | 'boostMini' | 'boostBig' | 'wall' | 'kart' | 'beep' | 'go' | 'lap' | 'finalLap' | 'win' | 'finish' | 'hover' | 'select' | 'back' | 'ready' | 'ice';
+type Shot = 'drift' | 'boostMini' | 'boostBig' | 'wall' | 'kart' | 'beep' | 'go' | 'lap' | 'finalLap' | 'win' | 'finish' | 'hover' | 'select' | 'back' | 'ready' | 'ice' | 'mud';
 
 const VOL_KEY = 'tr-volume', MUTE_KEY = 'tr-muted';
 const LEVELS = [1, 0.75, 0.5, 0.25];
@@ -140,6 +140,8 @@ class Sfx {
       case 'back': this.tone({ type: 'triangle', f: N(81), dur: 0.08, a: 0.002, peak: 0.18 }); this.tone({ type: 'triangle', f: N(74), t: 0.05, dur: 0.12, peak: 0.15 }); break;
       // hitting ice: a frosty crackle and two glassy pings
       case 'ice': this.noise({ dur: 0.18, peak: 0.12, f: 6500, f2: 3000, q: 3 }); this.tone({ f: N(100), dur: 0.25, peak: 0.05 }); this.tone({ f: N(107), t: 0.05, dur: 0.35, peak: 0.04 }); break;
+      // driving into mud: a low wet squelch
+      case 'mud': this.noise({ dur: 0.28, peak: 0.3, type: 'lowpass', f: 900, f2: 180, q: 4 }); this.tone({ f: 120, f2: 55, dur: 0.25, peak: 0.25 }); this.tone({ type: 'triangle', f: 260, f2: 140, t: 0.08, dur: 0.15, peak: 0.08 }); break;
       case 'ready': this.tone({ type: 'triangle', f: N(79), dur: 0.1, peak: 0.2 }); this.tone({ type: 'triangle', f: N(86), t: 0.08, dur: 0.25, peak: 0.2 }); this.noise({ t: 0.08, dur: 0.2, peak: 0.05, f: 6000, q: 2 }); break;
     }
   }
