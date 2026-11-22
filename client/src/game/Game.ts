@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { PHYSICS_HZ } from '@shared/constants';
 import { characterById } from '@shared/characters';
 import type { PlayerView } from '@shared/protocol';
-import { MEADOW_LOOP } from '@shared/tracks/meadowLoop';
+import { TRACK, THEME } from './theme';
 import { yawAt } from '@shared/trackMath';
 import { Input } from './Input';
 import { Track } from './Track';
@@ -73,10 +73,10 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    this.renderer.toneMappingExposure = THEME.exposure;
 
     toyEnvironment(this.renderer, this.scene, 0.35);
-    this.track = new Track(MEADOW_LOOP, this.world);
+    this.track = new Track(TRACK, this.world);
     this.scene.add(this.track.group);
     this.env = new Environment(this.scene, this.world, this.track);
     this.obstacles = new Obstacles(this.track, this.world);
@@ -285,6 +285,7 @@ export class Game {
     const p = this.kart.body.translation();
     const { distFromCentre } = this.race.update(STEP, p.x, p.z);
     this.kart.offroad = distFromCentre > this.track.def.roadHalfWidth + 0.6;
+    this.kart.onIce = this.track.onIce(this.race.index, p.x, p.z);
 
     for (const pad of this.track.pads) {
       const dx = p.x - pad.x, dz = p.z - pad.z;

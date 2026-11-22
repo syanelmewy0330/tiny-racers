@@ -10,6 +10,12 @@ export interface TrackDef {
   ramps: { t: number; side: 1 | -1 }[];
   /** Hay bale stacks: where around the lap (0..1) and which edge of the road they sit on. */
   hayBales: { t: number; side: 1 | -1 }[];
+  /** Look of the world around the road (scenery, sky, colours). Meadow if left out. */
+  theme?: 'meadow' | 'frost';
+  /** Slippery ice on the road: where it starts (0..1), how long (metres), which half (+1 / -1, or 0 for the full width). */
+  icePatches?: { t: number; len: number; side: 1 | -1 | 0 }[];
+  /** A tunnel the road drives through, from..to around the lap (0..1). */
+  tunnel?: { from: number; to: number };
 }
 
 export const MEADOW_LOOP: TrackDef = {

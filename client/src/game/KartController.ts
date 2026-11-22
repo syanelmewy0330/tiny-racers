@@ -27,6 +27,8 @@ export class KartController {
   vx = 0; vz = 0;
   boostTime = 0;
   offroad = false;
+  /** On an ice patch: the kart keeps sliding sideways and accelerates a little slower. */
+  onIce = false;
   driftDir: -1 | 0 | 1 = 0;
   driftCharge = 0;
   steerVisual = 0;
@@ -92,7 +94,7 @@ export class KartController {
     // --- engine and brakes ---
     this.boostTime = Math.max(0, this.boostTime - dt);
     const top = this.boosting ? t.boostSpeed : this.offroad ? t.maxSpeed * 0.55 : t.maxSpeed;
-    if (input.throttle) fwd += t.accel * Math.max(0.15, 1 - fwd / top) * dt * (this.boosting ? 2.5 : 1);
+    if (input.throttle) fwd += t.accel * Math.max(0.15, 1 - fwd / top) * dt * (this.boosting ? 2.5 : 1) * (this.onIce ? 0.6 : 1);
     if (input.brake) fwd -= (fwd > 0.5 ? t.brake : 10) * dt;
     if (!input.throttle && !input.brake) fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 6 * dt);
     if (this.offroad) fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 4 * dt);
@@ -115,7 +117,7 @@ export class KartController {
     this.steerVisual = input.steer;
 
     // --- grip: sideways sliding fades quickly, slower while drifting ---
-    const grip = this.driftDir !== 0 ? 2.2 : 9;
+    const grip = this.onIce ? (this.driftDir !== 0 ? 0.9 : 1.4) : this.driftDir !== 0 ? 2.2 : 9;
     lat *= Math.exp(-grip * dt);
     if (this.driftDir !== 0) lat += -this.driftDir * fwd * 0.012; // slide outward a little
 

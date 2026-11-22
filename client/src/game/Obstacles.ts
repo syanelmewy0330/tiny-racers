@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
+import { THEME, IS_FROST } from './theme';
 
 /**
  * Jump ramps and hay bale stacks (obstacles batch 1).
@@ -13,7 +14,8 @@ import type { Track } from './Track';
 
 // Design board v3.0 colours
 const CHARCOAL = 0x1c1f26, WARM_GRAY = 0x3a3f47, ORANGE = 0xff8a00, YELLOW = 0xfcc945;
-const BLOSSOM = [0xf7b6c8, 0xf9c9d6, 0xee9fb6];
+/** Petals on Meadow Loop, snow on Frostbite Pass. */
+const BLOSSOM = THEME.decor;
 
 /** Ramp size in metres: length along the road, width across it, height of the lip. */
 const RAMP_L = 8, RAMP_W = 5.2, RAMP_H = 1.5;
@@ -61,7 +63,7 @@ export class Obstacles {
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const h of track.def.hayBales) {
       const at = place(h.t, h.side, half - HAY_HX + 0.3);
-      const group = hayStack(hayTex, rnd);
+      const group = IS_FROST ? snowPile(rnd) : hayStack(hayTex, rnd);
       group.position.set(at.x, 0, at.z); group.rotation.y = at.yaw;
       this.group.add(group);
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(at.x, HAY_H / 2, at.z).setRotation(yawQuat(at.yaw)));
@@ -70,7 +72,7 @@ export class Obstacles {
     }
 
     // a small pool of straw bits for when you bump a stack
-    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: 0xe8c66a, roughness: 1 });
+    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: IS_FROST ? 0xf4f8ff : 0xe8c66a, roughness: 1 });
     for (let k = 0; k < 40; k++) {
       const m = new THREE.Mesh(strawGeo, strawMat); m.visible = false; this.group.add(m);
       this.straws.push({ m, vx: 0, vy: 0, vz: 0, life: 0 });
@@ -248,6 +250,25 @@ function hayStack(tex: THREE.Texture, rnd: () => number): THREE.Group {
     else p.position.set((rnd() - 0.5) * 4.6, k % 2 ? 1.08 : 0.03, (rnd() - 0.5) * 3.4);
     g.add(p);
   }
+  return g;
+}
+
+/** Frostbite Pass's version of a hay stack: a lumpy snow pile with an orange marker pole. */
+function snowPile(rnd: () => number): THREE.Group {
+  const g = new THREE.Group();
+  const snow = new THREE.MeshStandardMaterial({ color: 0xf4f8ff, roughness: 0.85, flatShading: true });
+  const shade = new THREE.MeshStandardMaterial({ color: 0xdbe6f7, roughness: 0.9, flatShading: true });
+  const lumps: [number, number, number, number][] = [[-1.3, 0.55, -0.4, 1.05], [1.2, 0.5, -0.3, 1.0], [0, 0.8, 0.2, 1.3], [-0.9, 0.45, 0.8, 0.85], [1.0, 0.45, 0.8, 0.85], [0.1, 1.55, -0.1, 0.8]];
+  lumps.forEach(([x, y, z, r], k) => {
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), k % 3 === 1 ? shade : snow);
+    m.position.set(x + (rnd() - 0.5) * 0.2, y, z); m.scale.y = 0.8 + rnd() * 0.2; m.rotation.y = rnd() * 6;
+    m.castShadow = true; m.receiveShadow = true; g.add(m);
+  });
+  // a snow marker pole, racing orange with a yellow reflector tip
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 8), new THREE.MeshStandardMaterial({ color: ORANGE, roughness: 0.5 }));
+  pole.position.set(1.7, 1.6, 0.9); pole.rotation.z = -0.12; pole.castShadow = true; g.add(pole);
+  const tip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.4, 0.18), new THREE.MeshStandardMaterial({ color: YELLOW, emissive: YELLOW, emissiveIntensity: 0.8 }));
+  tip.position.set(1.89, 3.15, 0.9); g.add(tip);
   return g;
 }
 

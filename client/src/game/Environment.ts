@@ -3,33 +3,38 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { nearest, yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
 import { SUN_DIR, HAZE } from './Look';
+import { THEME, IS_FROST } from './theme';
+import { frostScenery, type Snowfall } from './frostScenery';
 
 /** Sky, lights, ground and scenery around the track. */
 export class Environment {
   readonly sun: THREE.DirectionalLight;
   private clouds = new THREE.Group();
+  private snow: Snowfall | null = null;
 
   constructor(scene: THREE.Scene, world: RAPIER.World, track: Track) {
     scene.background = HAZE.clone();
-    scene.fog = new THREE.Fog(HAZE, 220, 900);
+    scene.fog = new THREE.Fog(HAZE, THEME.fogNear, THEME.fogFar);
 
     // golden-hour light: warm low sun, cool sky fill, warm bounce from the ground
-    scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6f6148, 0.95));
-    this.sun = new THREE.DirectionalLight(0xffd9a6, 2.6);
+    scene.add(new THREE.HemisphereLight(THEME.hemiSky, THEME.hemiGround, THEME.hemiPower));
+    this.sun = new THREE.DirectionalLight(THEME.sunColor, THEME.sunPower);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 160;
     this.sun.shadow.bias = -0.0005;
     scene.add(this.sun, this.sun.target);
 
-    // Ground: big grassy field, plus a physics floor under everything.
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshStandardMaterial({ color: 0x74b552, roughness: 1 }));
+    // Ground: big grassy (or snowy) field, plus a physics floor under everything.
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshStandardMaterial({ color: THEME.ground, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2; ground.position.set(90, 0, 45); ground.receiveShadow = true;
     scene.add(ground);
     world.createCollider(RAPIER.ColliderDesc.cuboid(800, 1, 800).setTranslation(90, -1, 45).setFriction(0));
 
     const rnd = mulberry(42);
     const clear = (x: number, z: number, margin: number) => nearest(track.path, x, z).dist > track.wallOffset + margin;
+    scene.add(startArch(track));
+    if (IS_FROST) { this.snow = frostScenery(scene, track, rnd, clear); return; }
 
     // Trees (instanced: cheap to draw hundreds)
     const trunkGeo = new THREE.CylinderGeometry(0.35, 0.5, 2.4, 8);
@@ -90,8 +95,6 @@ export class Environment {
       this.clouds.add(c);
     }
     scene.add(this.clouds);
-
-    scene.add(startArch(track));
   }
 
   /** Keep the sun's shadow box centred on the kart. */
@@ -99,6 +102,7 @@ export class Environment {
     this.sun.position.copy(target).addScaledVector(SUN_DIR, 80);
     this.sun.target.position.copy(target);
     this.clouds.position.x = Math.sin(time * 0.02) * 20;
+    this.snow?.update(target, time);
   }
 }
 
@@ -120,11 +124,11 @@ function mushroom(x: number, z: number, s: number): THREE.Group {
 function startArch(track: Track): THREE.Group {
   const g = new THREE.Group();
   const p = track.path.pts[0], yaw = yawAt(track.path, 0), w = track.wallOffset + 1;
-  const postMat = new THREE.MeshStandardMaterial({ color: 0xf05b65 });
+  const postMat = new THREE.MeshStandardMaterial({ color: IS_FROST ? 0x3a3f47 : 0xf05b65 });
   for (const sx of [-1, 1]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 9, 12), postMat);
     post.position.set(sx * w, 4.5, 0); post.castShadow = true; g.add(post);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial({ color: 0xe5a94b }));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial(IS_FROST ? { color: 0xff8a00, emissive: 0xff8a00, emissiveIntensity: 1.6 } : { color: 0xe5a94b }));
     ball.position.set(sx * w, 9.4, 0); g.add(ball);
   }
   const c = document.createElement('canvas'); c.width = 1024; c.height = 160;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { buildPath, yawAt, type TrackPath } from '@shared/trackMath';
 import type { TrackDef } from '@shared/tracks/meadowLoop';
+import { THEME } from './theme';
 
 export interface BoostPad { index: number; x: number; z: number; yaw: number; mesh: THREE.Mesh }
 
@@ -12,6 +13,8 @@ export class Track {
   readonly pads: BoostPad[] = [];
   readonly wallOffset: number;
   private padTexture: THREE.CanvasTexture;
+  /** Ice patches as [first sample, last sample, side] (side 0 = full width). */
+  private ice: { a: number; b: number; side: number }[] = [];
 
   constructor(readonly def: TrackDef, world: RAPIER.World) {
     this.path = buildPath(def, 1);
@@ -19,12 +22,13 @@ export class Track {
     const N = this.path.pts.length;
 
     // Ribbons: shoulder (grass-dirt), curbs, asphalt, all generated along the centre line.
-    this.group.add(this.ribbon(this.wallOffset, 0.02, () => new THREE.Color(0x7cc25a)));
-    this.group.add(this.ribbon(def.roadHalfWidth + 0.9, 0.04, (i) => new THREE.Color(Math.floor(i / 3) % 2 ? 0xffffff : 0xff4f79)));
-    this.group.add(this.ribbon(def.roadHalfWidth, 0.06, (i) => new THREE.Color(i % 2 ? 0x5d5672 : 0x605977)));
+    this.group.add(this.ribbon(this.wallOffset, 0.02, () => new THREE.Color(THEME.shoulder)));
+    this.group.add(this.ribbon(def.roadHalfWidth + 0.9, 0.04, (i) => new THREE.Color(Math.floor(i / 3) % 2 ? THEME.curb[0] : THEME.curb[1])));
+    this.group.add(this.ribbon(def.roadHalfWidth, 0.06, (i) => new THREE.Color(i % 2 ? THEME.road[0] : THEME.road[1])));
     this.group.add(this.dashes());
     this.group.add(this.startLine());
     this.group.add(this.walls(world));
+    this.icePatches();
 
     // Boost pads (design board v3.0): charcoal steel frame, glowing racing-orange chevrons.
     this.padTexture = this.makePadTexture();
@@ -54,6 +58,49 @@ export class Track {
   }
 
   update(time: number) { this.padTexture.offset.y = -(time * 1.6) % 1; }
+
+  /** Is the point (x, z), near centre-line sample i, on an ice patch? */
+  onIce(i: number, x: number, z: number): boolean {
+    for (const p of this.ice) {
+      if (i < p.a || i > p.b) continue;
+      const c = this.path.pts[i], s = this.side(i), off = (x - c.x) * s.x + (z - c.z) * s.z;
+      if (Math.abs(off) > this.def.roadHalfWidth + 0.5) continue;
+      if (p.side === 0 || off * p.side > -0.5) return true;
+    }
+    return false;
+  }
+
+  /** Glassy pale-blue ice sheets with frosty cracks, laid on the road. */
+  private icePatches() {
+    const N = this.path.pts.length, half = this.def.roadHalfWidth;
+    if (!this.def.icePatches?.length) return;
+    const tex = iceTexture();
+    const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xbfe2ff, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.95, emissive: 0x8ccfff, emissiveIntensity: 0.55, emissiveMap: tex });
+    for (const p of this.def.icePatches) {
+      const a = Math.floor(p.t * N) % N, n = Math.round(p.len / this.path.spacing);
+      this.ice.push({ a, b: a + n, side: p.side });
+      // outer and inner edge offsets (side +1 = the +side half of the road)
+      const lo = p.side === 0 ? -half + 0.3 : p.side > 0 ? -0.4 : -half + 0.3;
+      const hi = p.side === 0 ? half - 0.3 : p.side > 0 ? half - 0.3 : 0.4;
+      const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+      for (let k = 0; k <= n; k++) {
+        const i = (a + k) % N, c = this.path.pts[i], s = this.side(i);
+        // soft, wobbly ends so it looks like a frozen puddle, not a rectangle
+        const e = Math.min(k, n - k) / n, shrink = e < 0.18 ? (0.18 - e) * 2.6 * (hi - lo) * 0.5 : 0;
+        const wob = Math.sin(k * 0.9) * 0.35;
+        const l = lo + shrink + wob, h = hi - shrink + wob * 0.6;
+        pos.push(c.x + s.x * h, 0.075, c.z + s.z * h, c.x + s.x * l, 0.075, c.z + s.z * l);
+        uv.push(0, k / 6, (h - l) / 6, k / 6);
+        if (k < n) { const q = k * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals();
+      const m = new THREE.Mesh(g, mat); m.receiveShadow = true;
+      this.group.add(m);
+    }
+  }
 
   /** Left/right offset vector (perpendicular to travel) at sample i. */
   side(i: number): { x: number; z: number } {
@@ -107,7 +154,7 @@ export class Track {
   private walls(world: RAPIER.World): THREE.Group {
     const group = new THREE.Group(), pts = this.path.pts, N = pts.length, step = 3, H = 1.1;
     const geo = new THREE.BoxGeometry(1, H, 0.6);
-    const mats = [new THREE.MeshStandardMaterial({ color: 0xffffff }), new THREE.MeshStandardMaterial({ color: 0x4cc9f0 })];
+    const mats = [new THREE.MeshStandardMaterial({ color: THEME.walls[0] }), new THREE.MeshStandardMaterial({ color: THEME.walls[1] })];
     const meshes = [new THREE.InstancedMesh(geo, mats[0], Math.ceil(N / step) * 2), new THREE.InstancedMesh(geo, mats[1], Math.ceil(N / step) * 2)];
     const counts = [0, 0];
     const o = new THREE.Object3D(), q = new THREE.Quaternion();
@@ -144,4 +191,28 @@ export class Track {
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
     return t;
   }
+}
+
+function iceTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  const grad = g.createLinearGradient(0, 0, 256, 256);
+  grad.addColorStop(0, '#cfe6ff'); grad.addColorStop(0.5, '#e9f4ff'); grad.addColorStop(1, '#b9d6f7');
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
+  let seed = 11; const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  // frosty speckles
+  for (let k = 0; k < 400; k++) { g.fillStyle = `rgba(255,255,255,${0.2 + r() * 0.5})`; g.fillRect(r() * 256, r() * 256, 1 + r() * 2, 1 + r() * 2); }
+  // crack lines
+  g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 1.4;
+  for (let k = 0; k < 9; k++) {
+    let x = r() * 256, y = r() * 256; g.beginPath(); g.moveTo(x, y);
+    for (let s = 0; s < 5; s++) { x += (r() - 0.5) * 70; y += (r() - 0.5) * 70; g.lineTo(x, y); }
+    g.stroke();
+  }
+  // sky-blue glints
+  g.strokeStyle = 'rgba(108,169,230,0.55)'; g.lineWidth = 2;
+  for (let k = 0; k < 5; k++) { const x = r() * 256, y = r() * 256; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 30, y + 12); g.stroke(); }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
 }

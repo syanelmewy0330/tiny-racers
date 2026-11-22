@@ -4,6 +4,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { THEME } from './theme';
 
 /**
  * The game's "camera look" (design board v3.0): a warm golden-hour sky, haze, distant
@@ -20,8 +21,8 @@ const store = {
 const SLOW_FPS = 45;
 
 /** Where the sun sits (direction towards it). Low and warm, like late afternoon. */
-export const SUN_DIR = new THREE.Vector3(0.55, 0.42, 0.72).normalize();
-export const HAZE = new THREE.Color(0xf6dcc4);
+export const SUN_DIR = THEME.sunDir.clone();
+export const HAZE = new THREE.Color(THEME.haze);
 
 const GRADE = {
   uniforms: {
@@ -149,18 +150,18 @@ export class Look {
 function makeSky() {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { uSun: { value: SUN_DIR }, uHaze: { value: HAZE } },
+    uniforms: { uSun: { value: SUN_DIR }, uHaze: { value: HAZE }, uTop: { value: new THREE.Vector3(...THEME.skyTop) }, uMid: { value: new THREE.Vector3(...THEME.skyMid) }, uGlow: { value: new THREE.Vector3(...THEME.sunGlow) } },
     vertexShader: /* glsl */`varying vec3 vDir; void main() { vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
     fragmentShader: /* glsl */`
-      uniform vec3 uSun; uniform vec3 uHaze; varying vec3 vDir;
+      uniform vec3 uSun; uniform vec3 uHaze; uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uGlow; varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
         float h = clamp(d.y, -0.2, 1.0);
-        vec3 top = vec3(0.20, 0.42, 0.78), mid = vec3(0.48, 0.70, 0.93);
+        vec3 top = uTop, mid = uMid;
         vec3 col = mix(mid, top, smoothstep(0.08, 0.75, h));
         col = mix(uHaze, col, smoothstep(-0.02, 0.22, h));
         float s = max(dot(d, uSun), 0.0);
-        col += vec3(1.0, 0.78, 0.5) * (pow(s, 6.0) * 0.35 + pow(s, 64.0) * 0.9) + vec3(1.0, 0.95, 0.85) * pow(s, 900.0) * 6.0;
+        col += uGlow * (pow(s, 6.0) * 0.35 + pow(s, 64.0) * 0.9) + vec3(1.0, 0.95, 0.85) * pow(s, 900.0) * 6.0;
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -178,7 +179,7 @@ function makeMountains() {
   const g = new THREE.Group(); g.name = 'mountains';
   const rnd = seeded(7);
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 });
-  const rings = [{ r: 520, n: 24, h: [60, 110], col: [0x5d6f9e, 0xe9eef7] }, { r: 660, n: 28, h: [100, 170], col: [0x7484b3, 0xf2f5fb] }];
+  const rings = [{ r: 520, n: 24, h: [60, 110], col: [THEME.mountainRock[0], THEME.mountainSnow[0]] }, { r: 660, n: 28, h: [100, 170], col: [THEME.mountainRock[1], THEME.mountainSnow[1]] }];
   for (const ring of rings) {
     for (let k = 0; k < ring.n; k++) {
       const a = (k / ring.n) * Math.PI * 2 + rnd() * 0.12;
@@ -191,7 +192,7 @@ function makeMountains() {
       for (let i = 0; i < pos.count; i++) {
         const y = pos.getY(i), t = (y + height / 2) / height;
         if (t < 0.98) { pos.setX(i, pos.getX(i) * (0.85 + rnd() * 0.3)); pos.setZ(i, pos.getZ(i) * (0.85 + rnd() * 0.3)); pos.setY(i, y + (rnd() - 0.5) * height * 0.06); }
-        c.copy(rock).lerp(snow, t > 0.72 + rnd() * 0.08 ? 1 : 0);
+        c.copy(rock).lerp(snow, t > THEME.snowLine + rnd() * 0.08 ? 1 : 0);
         colors.push(c.r, c.g, c.b);
       }
       geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
