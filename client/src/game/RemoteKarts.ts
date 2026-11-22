@@ -9,7 +9,7 @@ interface Remote {
   body: RAPIER.RigidBody;
   tag: THREE.Sprite;
   target: PlayerView;
-  x: number; z: number; yaw: number;
+  x: number; y: number; z: number; yaw: number;
   seenAt: number;
   /** Recent positions, stamped with the sender's own clock. */
   buf: Shot[];
@@ -21,7 +21,7 @@ interface Remote {
   delay: number;
 }
 
-interface Shot { t: number; x: number; z: number; yaw: number }
+interface Shot { t: number; x: number; y: number; z: number; yaw: number }
 
 const now = () => performance.now() / 1000;
 const angleDiff = (a: number, b: number) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
@@ -51,7 +51,7 @@ export class RemoteKarts {
         const tag = nameTag(p.name);
         model.root.add(tag);
         this.scene.add(model.root);
-        r = { model, body, tag, target: p, x: p.x, z: p.z, yaw: p.yaw, seenAt: time, buf: [], offset: null, jitter: 0, delay: 0.1 };
+        r = { model, body, tag, target: p, x: p.x, y: p.y ?? 0.75, z: p.z, yaw: p.yaw, seenAt: time, buf: [], offset: null, jitter: 0, delay: 0.1 };
         this.karts.set(p.id, r);
       }
       r.target = p; r.seenAt = time;
@@ -62,7 +62,7 @@ export class RemoteKarts {
         if (r.offset === null || o < r.offset) r.offset = o;
         else r.offset += (o - r.offset) * 0.005;   // follow slow clock drift
         r.jitter += (o - r.offset - r.jitter) * 0.1;
-        r.buf.push({ t: p.t, x: p.x, z: p.z, yaw: p.yaw });
+        r.buf.push({ t: p.t, x: p.x, y: p.y ?? 0.75, z: p.z, yaw: p.yaw });
         if (r.buf.length > 30) r.buf.shift();
       }
     }
@@ -73,7 +73,7 @@ export class RemoteKarts {
   update(dt: number, time: number) {
     for (const r of this.karts.values()) {
       const t = r.target;
-      let tx: number, tz: number, tyaw: number;
+      let tx: number, tz: number, tyaw: number, ty = t.y ?? 0.75;
       if (r.offset !== null && r.buf.length) {
         const want = Math.min(0.35, Math.max(0.08, 0.06 + 2.5 * r.jitter));
         r.delay += (want - r.delay) * Math.min(1, dt * 0.8);   // ease, so their pace never visibly jumps
@@ -84,23 +84,25 @@ export class RemoteKarts {
         const hi = b[i], lo = b[i - 1];
         if (lo && at >= lo.t && at <= hi.t) {
           const f = (at - lo.t) / Math.max(1e-3, hi.t - lo.t);
-          tx = lo.x + (hi.x - lo.x) * f; tz = lo.z + (hi.z - lo.z) * f; tyaw = lo.yaw + angleDiff(lo.yaw, hi.yaw) * f;
+          tx = lo.x + (hi.x - lo.x) * f; ty = lo.y + (hi.y - lo.y) * f; tz = lo.z + (hi.z - lo.z) * f; tyaw = lo.yaw + angleDiff(lo.yaw, hi.yaw) * f;
         } else if (at > hi.t) {
           // no newer update yet: carry on along their heading for a moment
           const ahead = Math.min(at - hi.t, 0.3) * t.speed;
-          tx = hi.x + Math.sin(hi.yaw) * ahead; tz = hi.z + Math.cos(hi.yaw) * ahead; tyaw = hi.yaw;
-        } else { tx = hi.x; tz = hi.z; tyaw = hi.yaw; }
+          tx = hi.x + Math.sin(hi.yaw) * ahead; tz = hi.z + Math.cos(hi.yaw) * ahead; tyaw = hi.yaw; ty = hi.y;
+        } else { tx = hi.x; tz = hi.z; tyaw = hi.yaw; ty = hi.y; }
       } else {
         const ahead = Math.min(0.08, time - r.seenAt + 0.05) * t.speed;
         tx = t.x + Math.sin(t.yaw) * ahead; tz = t.z + Math.cos(t.yaw) * ahead; tyaw = t.yaw;
       }
-      if (Math.hypot(tx - r.x, tz - r.z) > 10) { r.x = tx; r.z = tz; r.yaw = tyaw; }   // respawn or new race: jump there
+      if (Math.hypot(tx - r.x, tz - r.z) > 10) { r.x = tx; r.y = ty; r.z = tz; r.yaw = tyaw; }   // respawn or new race: jump there
       else {
         const k = 1 - Math.exp(-30 * dt);   // just takes the edge off any small correction
-        r.x += (tx - r.x) * k; r.z += (tz - r.z) * k; r.yaw += angleDiff(r.yaw, tyaw) * k;
+        r.x += (tx - r.x) * k; r.y += (ty - r.y) * k; r.z += (tz - r.z) * k; r.yaw += angleDiff(r.yaw, tyaw) * k;
       }
-      r.body.setNextKinematicTranslation({ x: r.x, y: 0.75, z: r.z });
-      r.model.root.position.set(r.x, 0, r.z);
+      // height too, so you see your partner fly off jump ramps
+      const lift = Math.max(0, r.y - 0.75);
+      r.body.setNextKinematicTranslation({ x: r.x, y: 0.75 + lift, z: r.z });
+      r.model.root.position.set(r.x, lift, r.z);
       r.model.root.rotation.y = r.yaw;
       r.model.animate(dt, t.speed, 0, t.drift, t.drift ? 1 : 0, t.speed > 36, time);
     }
