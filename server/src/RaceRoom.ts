@@ -13,6 +13,8 @@ const MAX_SPEED = 62;            // m/s; faster than any legal boost, so only ch
 const FINISH_GRACE_MS = 30_000;  // after the winner finishes, others get this long
 const RECONNECT_SECONDS = 20;    // how long a dropped player's place is kept
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** Which race server this is: 'us' (default) or 'eu'. Set by TR_REGION on the hosting service. */
+const REGION = process.env.TR_REGION === 'eu' ? 'eu' : 'us';
 
 interface Player {
   id: string;
@@ -49,7 +51,10 @@ export class RaceRoom extends Room {
 
   onCreate(options: { public?: boolean } = {}) {
     this.isPublic = !!options.public;
-    this.roomId = Array.from({ length: 5 }, () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join('');
+    // Codes made on the Europe server start with E, so the game knows where to join them.
+    const pick = (letters: string) => letters[Math.floor(Math.random() * letters.length)];
+    const first = REGION === 'eu' ? 'E' : pick(CODE_LETTERS.replace('E', ''));
+    this.roomId = first + Array.from({ length: 4 }, () => pick(CODE_LETTERS)).join('');
     this.autoDispose = true;
 
     this.onMessage('start', (client: Client) => { if (client.sessionId === this.hostId && this.everyoneReady()) this.startRace(); });
