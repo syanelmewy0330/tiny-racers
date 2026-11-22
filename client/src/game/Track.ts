@@ -18,6 +18,7 @@ export class Track {
   private padTexture: THREE.CanvasTexture;
   /** Ice patches as [first sample, last sample, side] (side 0 = full width). */
   private ice: { a: number; b: number; side: number }[] = [];
+  private mud: { a: number; b: number; side: number }[] = [];
 
   constructor(readonly def: TrackDef, world: RAPIER.World) {
     this.path = buildPath(def, 1);
@@ -33,6 +34,7 @@ export class Track {
     this.group.add(this.startLine());
     this.group.add(this.walls(world));
     this.icePatches();
+    this.mudPatches();
     if (this.route.shortcut) this.group.add(this.shortcutSurface());
 
     // Boost pads (design board v3.0): charcoal steel frame, glowing racing-orange chevrons.
@@ -71,6 +73,21 @@ export class Track {
     this.group.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); });
   }
 
+  /** Is the point (x, z), near centre-line sample i, in a mud patch? */
+  onMud(i: number, x: number, z: number): boolean { return this.inPatch(this.mud, i, x, z); }
+
+  private inPatch(list: { a: number; b: number; side: number }[], i: number, x: number, z: number): boolean {
+    const N = this.path.pts.length;
+    for (const p of list) {
+      const k = ((i - p.a) % N + N) % N;
+      if (k > p.b - p.a) continue;
+      const c = this.path.pts[i], s = this.side(i), off = (x - c.x) * s.x + (z - c.z) * s.z;
+      if (Math.abs(off) > this.def.roadHalfWidth + 0.5) continue;
+      if (p.side === 0 || off * p.side > -0.5) return true;
+    }
+    return false;
+  }
+
   /** Is (x, z) on the shortcut's surface (off the main road)? */
   onShortcut(x: number, z: number): boolean {
     const sc = this.route.shortcut;
@@ -87,6 +104,39 @@ export class Track {
       if (p.side === 0 || off * p.side > -0.5) return true;
     }
     return false;
+  }
+
+  /** Dark glossy mud puddles with tyre ruts. */
+  private mudPatches() {
+    if (!this.def.mudPatches?.length) return;
+    const tex = mudTexture();
+    const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.35, metalness: 0.1 });
+    for (const p of this.def.mudPatches) this.mud.push(this.patch(p, mat));
+  }
+
+  /** Lay one patch (ice or mud) on the road as a soft-edged strip; returns its sample range. */
+  private patch(p: { t: number; len: number; side: number }, mat: THREE.Material): { a: number; b: number; side: number } {
+    const N = this.path.pts.length, half = this.def.roadHalfWidth;
+    const a = Math.floor(p.t * N) % N, n = Math.round(p.len / this.path.spacing);
+    const lo = p.side === 0 ? -half + 0.3 : p.side > 0 ? -0.4 : -half + 0.3;
+    const hi = p.side === 0 ? half - 0.3 : p.side > 0 ? half - 0.3 : 0.4;
+    const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+    for (let k = 0; k <= n; k++) {
+      const i = (a + k) % N, c = this.path.pts[i], s = this.side(i);
+      const e = Math.min(k, n - k) / n, shrink = e < 0.18 ? (0.18 - e) * 2.6 * (hi - lo) * 0.5 : 0;
+      const wob = Math.sin(k * 0.9) * 0.35;
+      const l = lo + shrink + wob, h = hi - shrink + wob * 0.6;
+      pos.push(c.x + s.x * h, 0.075, c.z + s.z * h, c.x + s.x * l, 0.075, c.z + s.z * l);
+      uv.push(0, k / 6, (h - l) / 6, k / 6);
+      if (k < n) { const q = k * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mat); m.receiveShadow = true;
+    this.group.add(m);
+    return { a, b: a + n, side: p.side };
   }
 
   /** Glassy pale-blue ice sheets with frosty cracks, laid on the road. */
@@ -302,4 +352,19 @@ function scSide(sp: { x: number; z: number }[], k: number): { x: number; z: numb
   const a = sp[Math.max(0, k - 2)], b = sp[Math.min(sp.length - 1, k + 2)];
   const yaw = Math.atan2(b.x - a.x, b.z - a.z);
   return { x: Math.cos(yaw), z: -Math.sin(yaw) };
+}
+
+function mudTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#24160d'; g.fillRect(0, 0, 256, 256);
+  let seed = 23; const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let k = 0; k < 60; k++) { g.fillStyle = ['#3a2518', '#1c110a', '#45301f'][k % 3]; g.beginPath(); g.ellipse(r() * 256, r() * 256, 8 + r() * 30, 5 + r() * 16, r() * 3, 0, Math.PI * 2); g.fill(); }
+  // wet shine and tyre ruts running along the road
+  g.strokeStyle = 'rgba(255,220,170,0.35)'; g.lineWidth = 3;
+  for (let k = 0; k < 12; k++) { const x = r() * 256, y = r() * 256; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 10, y + 20, x + 4, y + 40); g.stroke(); }
+  g.fillStyle = 'rgba(20,12,8,0.45)'; g.fillRect(70, 0, 16, 256); g.fillRect(170, 0, 16, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
 }

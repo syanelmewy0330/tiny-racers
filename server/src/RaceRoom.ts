@@ -4,12 +4,13 @@ import { CHARACTERS, isCharacterId } from '../../shared/src/characters.ts';
 import { buildRoute, locate, indexDelta, type Route } from '../../shared/src/trackMath.ts';
 import { MEADOW_LOOP, type TrackDef } from '../../shared/src/tracks/meadowLoop.ts';
 import { FROSTBITE_PASS } from '../../shared/src/tracks/frostbitePass.ts';
+import { LANTERN_GROVE } from '../../shared/src/tracks/lanternGrove.ts';
 import type { KartSnapshot } from '../../shared/src/types.ts';
 import type { RoomPhase, WorldMessage, PlayerView, ResultRow, ItemGotMessage, ItemUsedMessage, ItemHitMessage } from '../../shared/src/protocol.ts';
 import { ItemWorld } from '../../shared/src/items.ts';
 
 /** Tracks a room can race on. */
-const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS];
+const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS, LANTERN_GROVE];
 const ROUTES = new Map(TRACKS.map((t) => [t.id, buildRoute(t)]));
 const MAX_SPEED = 62;            // m/s; faster than any legal boost, so only cheats or glitches exceed it
 const FINISH_GRACE_MS = 30_000;  // after the winner finishes, others get this long

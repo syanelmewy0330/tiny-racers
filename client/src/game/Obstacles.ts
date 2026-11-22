@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
-import { THEME, isFrost } from './theme';
+import { THEME, isFrost, isGrove } from './theme';
 
 /**
  * Jump ramps and hay bale stacks (obstacles batch 1).
@@ -63,7 +63,7 @@ export class Obstacles {
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const h of track.def.hayBales) {
       const at = place(h.t, h.side, half - HAY_HX + 0.3);
-      const group = isFrost() ? snowPile(rnd) : hayStack(hayTex, rnd);
+      const group = isFrost() ? snowPile(rnd) : isGrove() ? logPile(rnd) : hayStack(hayTex, rnd);
       group.position.set(at.x, 0, at.z); group.rotation.y = at.yaw;
       this.group.add(group);
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(at.x, HAY_H / 2, at.z).setRotation(yawQuat(at.yaw)));
@@ -73,7 +73,7 @@ export class Obstacles {
     }
 
     // a small pool of straw bits for when you bump a stack
-    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0xf4f8ff : 0xe8c66a, roughness: 1 });
+    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0xf4f8ff : isGrove() ? 0x8a5f3c : 0xe8c66a, roughness: 1 });
     for (let k = 0; k < 40; k++) {
       const m = new THREE.Mesh(strawGeo, strawMat); m.visible = false; this.group.add(m);
       this.straws.push({ m, vx: 0, vy: 0, vz: 0, life: 0 });
@@ -258,6 +258,25 @@ function hayStack(tex: THREE.Texture, rnd: () => number): THREE.Group {
     else p.position.set((rnd() - 0.5) * 4.6, k % 2 ? 1.08 : 0.03, (rnd() - 0.5) * 3.4);
     g.add(p);
   }
+  return g;
+}
+
+/** Lantern Grove's version of a hay stack: stacked logs with a little lantern on top. */
+function logPile(rnd: () => number): THREE.Group {
+  const g = new THREE.Group();
+  const bark = new THREE.MeshStandardMaterial({ color: 0x5c3d28, roughness: 0.95, flatShading: true });
+  const cut = new THREE.MeshStandardMaterial({ color: 0xd9b27a, roughness: 0.8 });
+  const rows: [number, number, number][] = [[-1.0, 0.45, 0], [0, 0.45, 0], [1.0, 0.45, 0], [-0.5, 1.3, 0], [0.5, 1.3, 0], [0, 2.1, 0]];
+  for (const [x, y] of rows) {
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.47, 2.7, 10), [bark, cut, cut]);
+    log.rotation.x = Math.PI / 2; log.position.set(x + (rnd() - 0.5) * 0.08, y, (rnd() - 0.5) * 0.25);
+    log.castShadow = true; log.receiveShadow = true; g.add(log);
+  }
+  // moss tufts and a lantern
+  const moss = new THREE.MeshStandardMaterial({ color: 0x7aa58a, roughness: 1, flatShading: true });
+  for (let k = 0; k < 5; k++) { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22 + rnd() * 0.12, 0), moss); m.position.set((rnd() - 0.5) * 2.4, 0.9 + rnd() * 1.4, (rnd() - 0.5) * 1.6); g.add(m); }
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), new THREE.MeshStandardMaterial({ color: 0xffd28a, emissive: 0xff9a3c, emissiveIntensity: 2.6 }));
+  lamp.position.set(0.9, 2.15, 0); lamp.scale.y = 1.2; g.add(lamp);
   return g;
 }
 

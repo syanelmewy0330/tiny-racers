@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import type { TrackDef } from '@shared/tracks/meadowLoop';
 import { MEADOW_LOOP } from '@shared/tracks/meadowLoop';
 import { FROSTBITE_PASS } from '@shared/tracks/frostbitePass';
+import { LANTERN_GROVE } from '@shared/tracks/lanternGrove';
 
 /** Every track you can pick, in picker order. */
-export const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS];
+export const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS, LANTERN_GROVE];
 export const trackById = (id: unknown): TrackDef => TRACKS.find((t) => t.id === id) ?? MEADOW_LOOP;
 
 const KEY = 'tr-track';
@@ -12,6 +13,7 @@ const KEY = 'tr-track';
 export function savedTrack(): TrackDef {
   const q = new URLSearchParams(location.search).get('track');
   if (q === 'frostbite') return FROSTBITE_PASS;
+  if (q === 'grove') return LANTERN_GROVE;
   let id: string | null = null;
   try { id = localStorage.getItem(KEY); } catch { /* private mode */ }
   return trackById(id);
@@ -50,6 +52,17 @@ const FROST: Theme = {
   exposure: 1.0,
 };
 
+/** Moonlit forest: deep blue night, a big pale moon, warm lantern light, Sage greens. */
+const GROVE: Theme = {
+  haze: 0x232a48, sunDir: new THREE.Vector3(0.5, 0.38, -0.78).normalize(), sunColor: 0xb8c8ff, sunPower: 1.25,
+  hemiSky: 0x7183c9, hemiGround: 0x22302a, hemiPower: 0.8, fogNear: 110, fogFar: 560,
+  skyTop: [0.015, 0.02, 0.07], skyMid: [0.06, 0.08, 0.2], sunGlow: [0.55, 0.62, 0.9],
+  mountainRock: [0x161b2e, 0x1b2138], mountainSnow: [0x262e4a, 0x2a3352], snowLine: 0.85,
+  ground: 0x2a4636, shoulder: 0x34553f, curb: [0xf2f2f0, 0x7aa58a], road: [0x54483b, 0x574a3d], walls: [0xe9dcc0, 0x7a5636],
+  decor: [0xfcc945, 0xffe39a, 0x7aa58a],
+  exposure: 1.05,
+};
+
 /** The colours in use right now. Changed in place by `useTrack`, so everything reads the current track's look. */
 export const THEME: Theme = { ...MEADOW, sunDir: MEADOW.sunDir.clone() };
 export const SUN_DIR = new THREE.Vector3().copy(MEADOW.sunDir);
@@ -57,11 +70,12 @@ export const HAZE = new THREE.Color(MEADOW.haze);
 /** The track being driven right now. */
 export let TRACK: TrackDef = MEADOW_LOOP;
 export const isFrost = () => TRACK.theme === 'frost';
+export const isGrove = () => TRACK.theme === 'grove';
 
 /** Switch the current track and its colours. Builders called after this use the new look. */
 export function useTrack(def: TrackDef) {
   TRACK = def;
-  const t = def.theme === 'frost' ? FROST : MEADOW;
+  const t = def.theme === 'frost' ? FROST : def.theme === 'grove' ? GROVE : MEADOW;
   Object.assign(THEME, t, { sunDir: t.sunDir.clone() });
   SUN_DIR.copy(t.sunDir); HAZE.set(t.haze);
 }

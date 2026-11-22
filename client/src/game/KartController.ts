@@ -29,6 +29,8 @@ export class KartController {
   offroad = false;
   /** On an ice patch: the kart keeps sliding sideways and accelerates a little slower. */
   onIce = false;
+  /** In mud: lower top speed and slower to pick up speed. */
+  onMud = false;
   driftDir: -1 | 0 | 1 = 0;
   driftCharge = 0;
   steerVisual = 0;
@@ -109,7 +111,8 @@ export class KartController {
     let top = this.boosting ? t.boostSpeed : this.offroad ? t.maxSpeed * 0.55 : t.maxSpeed;
     if (magnet) top = Math.max(top, t.maxSpeed + 7);
     if (this.shrinkTime > 0) top *= 0.68;
-    if (input.throttle) fwd += t.accel * Math.max(0.15, 1 - fwd / top) * dt * (this.boosting ? 2.5 : 1) * (this.onIce ? 0.6 : 1);
+    if (this.onMud && !this.boosting) top *= 0.62;
+    if (input.throttle) fwd += t.accel * Math.max(0.15, 1 - fwd / top) * dt * (this.boosting ? 2.5 : 1) * (this.onIce ? 0.6 : 1) * (this.onMud ? 0.7 : 1);
     if (input.brake) fwd -= (fwd > 0.5 ? t.brake : 10) * dt;
     if (!input.throttle && !input.brake) fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 6 * dt);
     if (this.offroad) fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 4 * dt);

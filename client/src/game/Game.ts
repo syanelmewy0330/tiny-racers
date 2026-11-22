@@ -314,6 +314,7 @@ export class Game {
     const { distFromCentre } = this.race.update(STEP, p.x, p.z);
     this.kart.offroad = distFromCentre > this.track.def.roadHalfWidth + 0.6;
     this.kart.onIce = this.track.onIce(this.race.index, p.x, p.z);
+    this.kart.onMud = this.track.onMud(this.race.index, p.x, p.z);
 
     for (const pad of this.track.pads) {
       const dx = p.x - pad.x, dz = p.z - pad.z;
