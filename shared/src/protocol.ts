@@ -1,6 +1,6 @@
 /** Messages between the game and the race server. Plain JSON, sent over Colyseus. */
 import type { KartSnapshot } from './types';
-import type { Hazard, ItemId } from './items';
+import type { Hazard, ItemId, ThunderHit } from './items';
 
 export type RoomPhase = 'lobby' | 'countdown' | 'racing' | 'results';
 
@@ -38,8 +38,8 @@ export interface WorldMessage {
 /** Server to the racer who drove through a box. */
 export interface ItemGotMessage { item: ItemId; uses: number }
 /** Server to everyone when a racer uses an item. */
-export interface ItemUsedMessage { id: string; item: ItemId; usesLeft: number; hazard?: Hazard }
+export interface ItemUsedMessage { id: string; item: ItemId; usesLeft: number; hazard?: Hazard; thunder?: ThunderHit[] }
 /** Server to everyone when a racer hits a banana peel (blocked = their shield took it). */
-export interface ItemHitMessage { victim: string; hazard: number; kind: 'banana' | 'bounce' | 'rocket'; blocked: boolean }
+export interface ItemHitMessage { victim: string; hazard: number; kind: 'banana' | 'bounce' | 'rocket' | 'star'; blocked: boolean }
 
 export interface ResultRow { id: string; name: string; character: string; place: number; time: number | null }
