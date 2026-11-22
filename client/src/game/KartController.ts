@@ -34,6 +34,11 @@ export class KartController {
   onBoost?: (kind: 'pad' | 'mini' | 'super' | 'item') => void;
   /** Seconds left of a spin-out (hit by a banana peel): no control while it lasts. */
   spinTime = 0;
+  /** Mini Thunder: seconds left being tiny (slower). */
+  shrinkTime = 0;
+  /** Magnet: seconds left of being pulled, and who towards (set each step by the game). */
+  magnetTime = 0;
+  magnetTarget: { x: number; z: number } | null = null;
   private t: ReturnType<typeof tuning>;
   setCharacter(ch: CharacterDef) { this.t = tuning(ch); }
   private driftHeld = false;
@@ -63,6 +68,11 @@ export class KartController {
     this.spinTime = seconds; this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0;
   }
 
+  /** Struck by Mini Thunder: small and slower for a few seconds. */
+  shrink(seconds: number) { this.shrinkTime = seconds; this.boostTime = 0; }
+  /** Magnet: a strong pull forward, steering itself towards the racer ahead if there is one. */
+  magnet(seconds: number) { this.magnetTime = seconds; }
+
   /** Hit a Bounce Trap: thrown into the air, most speed gone, a moment without control. */
   bounce() {
     this.spinTime = 0.7; this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0;
@@ -91,7 +101,12 @@ export class KartController {
 
     // --- engine and brakes ---
     this.boostTime = Math.max(0, this.boostTime - dt);
-    const top = this.boosting ? t.boostSpeed : this.offroad ? t.maxSpeed * 0.55 : t.maxSpeed;
+    this.shrinkTime = Math.max(0, this.shrinkTime - dt);
+    this.magnetTime = Math.max(0, this.magnetTime - dt);
+    const magnet = this.magnetTime > 0 && !spinning;
+    let top = this.boosting ? t.boostSpeed : this.offroad ? t.maxSpeed * 0.55 : t.maxSpeed;
+    if (magnet) top = Math.max(top, t.maxSpeed + 7);
+    if (this.shrinkTime > 0) top *= 0.68;
     if (input.throttle) fwd += t.accel * Math.max(0.15, 1 - fwd / top) * dt * (this.boosting ? 2.5 : 1);
     if (input.brake) fwd -= (fwd > 0.5 ? t.brake : 10) * dt;
     if (!input.throttle && !input.brake) fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 6 * dt);
@@ -100,6 +115,7 @@ export class KartController {
     if (fwd < -t.reverseMax) fwd = -t.reverseMax;
     if (this.boosting && fwd < t.maxSpeed) fwd = Math.min(t.boostSpeed, fwd + 30 * dt);
     if (spinning) fwd *= Math.exp(-2.2 * dt);
+    if (magnet) fwd = Math.min(top, fwd + 26 * dt);
 
     // --- steering ---
     const speedFactor = Math.min(1, Math.abs(fwd) / 7) * (1 - 0.25 * Math.min(1, Math.abs(fwd) / 40));
@@ -112,6 +128,13 @@ export class KartController {
       turn = input.steer * t.turnRate * Math.sign(fwd || 1);
     }
     this.yaw += turn * speedFactor * dt;
+    if (magnet && this.magnetTarget) {
+      // gently turn towards the racer ahead
+      const p = this.body.translation();
+      let d = Math.atan2(this.magnetTarget.x - p.x, this.magnetTarget.z - p.z) - this.yaw;
+      while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+      this.yaw += Math.max(-1.4 * dt, Math.min(1.4 * dt, d));
+    }
     this.steerVisual = input.steer;
 
     // --- grip: sideways sliding fades quickly, slower while drifting ---
@@ -137,6 +160,7 @@ export class KartController {
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.yaw = yaw; this.vx = this.vz = 0;
     this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0; this.spinTime = 0;
+    this.shrinkTime = 0; this.magnetTime = 0;
   }
 
   snapshot(): KartSnapshot {

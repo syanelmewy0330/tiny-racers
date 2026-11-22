@@ -284,6 +284,8 @@ details[open] { display: flex; flex-direction: column; gap: 6px; }
 .rh-item.rolling svg { animation: rh-roll .09s linear infinite; opacity: .85; }
 @keyframes rh-roll { from { transform: translateY(-6%); } to { transform: translateY(6%); } }
 .rh-item-label .uses { color: var(--yellow, #FCC945); font-style: italic; }
+.rh-flash { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle, rgba(255, 246, 200, .85), rgba(252, 201, 69, .35)); animation: rh-flash .55s ease-out forwards; }
+@keyframes rh-flash { 0% { opacity: 1; } 20% { opacity: .2; } 35% { opacity: .9; } 100% { opacity: 0; } }
 
 /* server switch on the title screen */
 .servers { display: flex; gap: 10px; flex-wrap: wrap; }
