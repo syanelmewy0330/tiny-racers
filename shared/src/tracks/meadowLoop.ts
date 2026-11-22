@@ -6,6 +6,10 @@ export interface TrackDef {
   roadHalfWidth: number;     // asphalt, full speed
   shoulder: number;          // grass strip each side before the wall (slows you down)
   boostPads: number[];       // positions around the lap, 0..1
+  /** Jump ramps: where around the lap (0..1) and which half of the road (+1 / -1). */
+  ramps: { t: number; side: 1 | -1 }[];
+  /** Hay bale stacks: where around the lap (0..1) and which edge of the road they sit on. */
+  hayBales: { t: number; side: 1 | -1 }[];
 }
 
 export const MEADOW_LOOP: TrackDef = {
@@ -19,4 +23,7 @@ export const MEADOW_LOOP: TrackDef = {
   roadHalfWidth: 7.5,
   shoulder: 4,
   boostPads: [0.16, 0.41, 0.62, 0.86],
+  // Everything is placed from these numbers, so every computer builds exactly the same track.
+  ramps: [{ t: 0.25, side: -1 }, { t: 0.8, side: 1 }],
+  hayBales: [{ t: 0.12, side: 1 }, { t: 0.45, side: -1 }, { t: 0.585, side: 1 }, { t: 0.94, side: -1 }],
 };

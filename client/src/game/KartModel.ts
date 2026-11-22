@@ -33,6 +33,8 @@ export class KartModel {
   private shrinkLeft = 0; private size = 1;
   /** Mini Thunder: shrink to about half size for a while (visual only). */
   shrink(seconds: number) { this.shrinkLeft = seconds; this.anim.react(); }
+  /** Extra nose-up (negative) or nose-down tilt, e.g. flying off a jump ramp. Visual only. */
+  tilt = 0;
   /** A rival hit a Bounce Trap: hop the model up and down (their own game moves the real kart). */
   hop() { this.hopLeft = 0.8; this.anim.react(); }
   /** Hit by a banana peel: the kart spins round twice (visual only). */
@@ -142,7 +144,7 @@ export class KartModel {
     if (this.spinLeft > 0) { this.spinLeft = Math.max(0, this.spinLeft - dt); const k = 1 - this.spinLeft / this.spinTotal; spin = (1 - (1 - k) * (1 - k)) * Math.PI * 4; }
     this.body.rotation.y = this.bodyYaw + spin;
     this.body.rotation.z += (targetRoll - this.body.rotation.z) * Math.min(1, dt * 8);
-    this.body.rotation.x = this.pitch;
+    this.body.rotation.x = this.pitch + this.tilt;
     this.body.position.y = Math.abs(speed) > 1 ? Math.sin(time * 30) * 0.015 * Math.min(1, Math.abs(speed) / 10) : 0;
     if (this.shrinkLeft > 0) this.shrinkLeft = Math.max(0, this.shrinkLeft - dt);
     const wantSize = this.shrinkLeft > 0 ? 0.55 : 1;

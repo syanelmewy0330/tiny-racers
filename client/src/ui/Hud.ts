@@ -1,3 +1,4 @@
+import { sfx } from '../audio/Sfx';
 import { LAPS } from '@shared/constants';
 import { formatTime } from '../game/RaceTracker';
 import { characterById } from '@shared/characters';
@@ -146,7 +147,7 @@ export class Hud {
   // ---------- pause menu ----------
   get paused() { return !this.pauseEl.hidden; }
 
-  openPause(o: { online: boolean; graphics: string; finished: boolean }, a: { resume: () => void; restart?: () => void; graphics: () => void; leave: () => void }) {
+  openPause(o: { online: boolean; graphics: string; finished: boolean }, a: { resume: () => void; restart?: () => void; graphics: () => void; sound?: () => void; leave: () => void }) {
     const card = this.pauseEl.querySelector('[data-pcard]') as HTMLElement;
     card.textContent = '';
     const h = document.createElement('div'); h.className = 'rr-title shout'; h.textContent = 'PAUSED'; card.append(h);
@@ -162,11 +163,16 @@ export class Hud {
     const help = add(this.helpOpen ? 'HIDE CONTROLS' : 'SHOW CONTROLS', 'alt', () => { this.toggleHelp(); help.querySelector('span')!.textContent = this.helpOpen ? 'HIDE CONTROLS' : 'SHOW CONTROLS'; }, 'H');
     const gfx = add(`GRAPHICS: ${o.graphics.toUpperCase()}`, 'alt', () => { a.graphics(); }, 'G');
     gfx.dataset.gfx = '';
+    if (a.sound) {
+      const snd = add(`SOUND: ${sfx.label}`, 'alt', () => a.sound!(), 'M');
+      snd.dataset.snd = '';
+    }
     add(o.online ? 'LEAVE ROOM' : 'QUIT TO MENU', 'warn', a.leave);
     this.pauseEl.hidden = false;
     (list.querySelector('button') as HTMLElement).focus();
   }
   setPauseGraphics(q: string) { const b = this.pauseEl.querySelector('[data-gfx] span'); if (b) b.textContent = `GRAPHICS: ${q.toUpperCase()}`; }
+  setPauseSound() { const b = this.pauseEl.querySelector('[data-snd] span'); if (b) b.textContent = `SOUND: ${sfx.label}`; }
   closePause() { this.pauseEl.hidden = true; }
 
   /** Gamepad / arrow navigation for whichever menu is open (pause or results). */
