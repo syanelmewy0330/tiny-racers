@@ -5,7 +5,7 @@ import { characterById } from '@shared/characters';
 import type { PlayerView } from '@shared/protocol';
 import { THEME, useTrack, savedTrack, trackById } from './theme';
 import type { TrackDef } from '@shared/tracks/meadowLoop';
-import { yawAt, nearest, locate } from '@shared/trackMath';
+import { yawAt, locate } from '@shared/trackMath';
 import { Input } from './Input';
 import { Track } from './Track';
 import { Environment } from './Environment';
@@ -329,13 +329,14 @@ export class Game {
       const me = this.online?.me ?? 'me';
       const players = this.online?.latest?.players;
       const place = this.meView?.place ?? 1, of = players?.length ?? 1;
-      this.items.step(me, p.x, p.z, place, of);
-      if (useItem) this.items.use(me, p.x, p.z, this.kart.yaw);
+      const gy = p.y - KART_RADIUS;
+      this.items.step(me, p.x, p.z, place, of, gy);
+      if (useItem) this.items.use(me, p.x, p.z, this.kart.yaw, gy);
     }
     // Magnet: steer along the road towards whoever is ahead, at extra speed
     if (this.kart.magnetTime > 0) {
       const path = this.track.path, N = path.pts.length;
-      this.magnetHint = nearest(path, p.x, p.z, this.magnetHint).i;
+      this.magnetHint = this.race.index;
       this.kart.magnetTarget = path.pts[(this.magnetHint + 14) % N];
     }
     this.kart.applyInput(input, STEP, locked);
@@ -345,9 +346,32 @@ export class Game {
     this.world.step();
     this.obstacles.ground = this.track.heightAt(this.race.index);
     this.obstacles.step(this.kart.body, this.kart.yaw, STEP);
+    this.stickToRaisedRoad();
     this.kart.syncFromPhysics();
     this.bumpCheck(before);
     if (this.kart.body.translation().y < -5) this.respawn();
+  }
+
+  /**
+   * On a bridge ramp, keep the kart on the road surface instead of letting the physics bounce
+   * it into little hops: set its height to the road and its vertical speed to follow the slope.
+   * Leaves it alone when it is clearly in the air (a bounce trap, or a jump).
+   */
+  private stickToRaisedRoad() {
+    const path = this.track.path, P = path.pts, N = P.length, i = this.race.index;
+    const a = P[i], b = P[(i + 1) % N], c = P[(i - 1 + N) % N];
+    if (a.y < 0.02 && b.y < 0.02 && c.y < 0.02) return;
+    const k = this.kart.body.translation(), v = this.kart.body.linvel();
+    const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz) || 1;
+    // road height right under the kart, between the two nearest samples
+    const f = ((k.x - a.x) * dx + (k.z - a.z) * dz) / (len * len);
+    const road = f >= 0 ? a.y + (b.y - a.y) * Math.min(1, f) : a.y + (a.y - c.y) * Math.max(-1, f);
+    const along = (v.x * dx + v.z * dz) / len, slopeVy = along * (b.y - a.y) / len;
+    const gap = k.y - KART_RADIUS - road;
+    if (gap < -0.6 || gap > 0.9 || v.y > slopeVy + 3) return;
+    // a hair above the surface, so the next step glides along it instead of digging in and losing speed
+    this.kart.body.setTranslation({ x: k.x, y: road + KART_RADIUS + 0.04, z: k.z }, true);
+    this.kart.body.setLinvel({ x: v.x, y: slopeVy, z: v.z }, true);
   }
 
   /** A sudden loss of speed in one step means we hit a wall or another kart. */

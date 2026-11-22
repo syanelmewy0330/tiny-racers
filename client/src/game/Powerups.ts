@@ -171,7 +171,8 @@ export class Powerups {
 
   // ---------- each physics step ----------
   /** Collect boxes and touch peels. Call while racing. */
-  step(me: string, x: number, z: number, place: number, of: number) {
+  /** `y` = ground height under the kart, so a peel on the bridge can't hit you on the road below. */
+  step(me: string, x: number, z: number, place: number, of: number, y = 0) {
     const now = this.now();
     // item boxes
     for (const b of this.boxes) {
@@ -196,9 +197,9 @@ export class Powerups {
         const prev = Math.min(age, this.rocketChecked.get(h.id) ?? 0);
         this.rocketChecked.set(h.id, age);
         const r0 = rocketAt(this.path, h, prev, this.roadHalf), r1 = rocketAt(this.path, h, age, this.roadHalf);
-        if (segDist(x, z, r0.x, r0.z, r1.x, r1.z) > (star ? STAR_REACH : ROCKET_REACH)) continue;
+        if (segDist(x, z, r0.x, r0.z, r1.x, r1.z) > (star ? STAR_REACH : ROCKET_REACH) || Math.abs(r1.y - y) > 2.5) continue;
       } else {
-        if (Math.hypot(x - h.x, z - h.z) > HAZARD_REACH) continue;
+        if (Math.hypot(x - h.x, z - h.z) > HAZARD_REACH || Math.abs((h.y ?? 0) - y) > 2.5) continue;
         if (h.owner === me && age * 1000 < OWNER_GRACE_MS) continue;
       }
       if (this.online) {
@@ -216,14 +217,14 @@ export class Powerups {
   }
 
   private hitMe(blocked: boolean, kind: Hazard['kind'], h: Hazard) {
-    if (kind === 'rocket') { const r = rocketAt(this.path, h, (this.now() - (this.hazardSeen.get(h.id) ?? this.now())) / 1000); this.burst(r.x, 1, r.z); }
+    if (kind === 'rocket') { const r = rocketAt(this.path, h, (this.now() - (this.hazardSeen.get(h.id) ?? this.now())) / 1000); this.burst(r.x, r.y + 1, r.z); }
     if (blocked) { this.myShieldUntil = 0; this.popBubble('me'); this.onSay?.('Shield saved you!'); return; }
     if (kind === 'bounce') { this.onBounce?.(); this.onSay?.('Boing!'); }
     else { this.onSpin?.(); this.onSay?.(kind === 'rocket' ? 'Popped!' : kind === 'star' ? 'Chaos!' : 'Slipped!'); }
   }
 
   /** E / LB: use what you hold. */
-  use(me: string, x: number, z: number, yaw: number) {
+  use(me: string, x: number, z: number, yaw: number, y = 0) {
     if (!this.held || this.rolling) return;
     const now = this.now();
     const item = this.held.item;
@@ -232,7 +233,7 @@ export class Powerups {
       this.held.uses -= 1;
       if (this.held.uses <= 0) this.held = null;
     } else {
-      const r = this.local.use(me, now, x, z, yaw);
+      const r = this.local.use(me, now, x, z, yaw, [], y);
       if (!r) return;
       if (r.thunder) this.strike(r.thunder, me);
       this.held = r.usesLeft > 0 ? { item, uses: r.usesLeft } : null;
@@ -295,17 +296,17 @@ export class Powerups {
         const age = (now - (this.hazardSeen.get(h.id) ?? now)) / 1000;
         if (age > STAR_LIFE_S) { if (o.visible) { o.visible = false; this.burst(o.position.x, 1.2, o.position.z); } continue; }
         const r = rocketAt(this.path, h, age, this.roadHalf);
-        o.position.set(r.x, 1.2 + Math.abs(Math.sin(age * 5)) * 0.8, r.z); o.rotation.set(0, r.yaw + Math.PI / 2, age * 9);
-        if (Math.random() < 0.6) this.trail(r.x, r.z, 1.2);
+        o.position.set(r.x, r.y + 1.2 + Math.abs(Math.sin(age * 5)) * 0.8, r.z); o.rotation.set(0, r.yaw + Math.PI / 2, age * 9);
+        if (Math.random() < 0.6) this.trail(r.x, r.z, r.y + 1.2);
         continue;
       }
       if (h.kind === 'rocket') {
         const age = (now - (this.hazardSeen.get(h.id) ?? now)) / 1000;
         if (age > ROCKET_LIFE_S) { if (o.visible) { o.visible = false; this.burst(o.position.x, 1, o.position.z); } continue; }
         const r = rocketAt(this.path, h, age);
-        o.position.set(r.x, 1.0 + Math.sin(age * 18) * 0.06, r.z); o.rotation.set(0, r.yaw, 0);
+        o.position.set(r.x, r.y + 1.0 + Math.sin(age * 18) * 0.06, r.z); o.rotation.set(0, r.yaw, 0);
         const spin = o.getObjectByName('spin'); if (spin) spin.rotation.z = age * 14;
-        this.trail(r.x - Math.sin(r.yaw) * 0.9, r.z - Math.cos(r.yaw) * 0.9);
+        this.trail(r.x - Math.sin(r.yaw) * 0.9, r.z - Math.cos(r.yaw) * 0.9, r.y + 1.0);
       }
     }
     // magnets float over karts while they pull
@@ -383,7 +384,7 @@ export class Powerups {
     for (const h of this.hazards) {
       if (this.peels.has(h.id)) continue;
       const o = h.kind === 'rocket' ? rocketModel() : h.kind === 'star' ? chaosStar() : h.kind === 'bounce' ? bounceTrap() : bananaPeel();
-      o.position.set(h.x, 0, h.z); if (h.kind !== 'rocket' && h.kind !== 'star') o.rotation.y = (h.id * 2.4) % 6.28;
+      o.position.set(h.x, h.y ?? 0, h.z); if (h.kind !== 'rocket' && h.kind !== 'star') o.rotation.y = (h.id * 2.4) % 6.28;
       this.peelGroup.add(o); this.peels.set(h.id, o);
     }
   }

@@ -4,7 +4,7 @@
  * races (run on the server), so both behave the same.
  */
 import type { TrackPath } from './trackMath';
-import { yawAt, nearest } from './trackMath';
+import { yawAt, nearestAt } from './trackMath';
 
 export type ItemId = 'juice' | 'shield' | 'banana' | 'rocket' | 'bounce' | 'magnet' | 'thunder' | 'star';
 
@@ -56,7 +56,7 @@ export interface ItemBox { id: number; x: number; z: number }
  * A Rocket Pop starts at path sample i0, `off` metres to the side of the centre line, and
  * flies on from there (see rocketAt), so every computer can work out where it is.
  */
-export interface Hazard { id: number; kind: 'banana' | 'bounce' | 'rocket' | 'star'; x: number; z: number; owner: string; at: number; i0?: number; off?: number }
+export interface Hazard { id: number; kind: 'banana' | 'bounce' | 'rocket' | 'star'; x: number; z: number; /** ground height it lies on (raised roads) */ y?: number; owner: string; at: number; i0?: number; off?: number }
 
 /**
  * Where a flying item is, `age` seconds after launch. A Rocket Pop follows the road in its
@@ -70,7 +70,7 @@ export function rocketAt(path: TrackPath, h: Hazard, age: number, roadHalfWidth 
   const a = path.pts[((i % N) + N) % N], b = path.pts[(((i + 1) % N) + N) % N];
   const yaw = yawAt(path, ((i % N) + N) % N);
   const off = star ? Math.sin(age * 1.9 + (h.off ?? 0)) * roadHalfWidth * 0.8 : h.off ?? 0;
-  return { x: a.x + (b.x - a.x) * t + Math.cos(yaw) * off, z: a.z + (b.z - a.z) * t - Math.sin(yaw) * off, yaw };
+  return { x: a.x + (b.x - a.x) * t + Math.cos(yaw) * off, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t - Math.sin(yaw) * off, yaw };
 }
 
 /** Item boxes in rows across the road. */
@@ -159,23 +159,24 @@ export class ItemWorld {
 
   /** Use the held item. Peels and traps are dropped just behind the kart; rockets fire ahead. */
   /** `ahead` = racers in front of this player (Mini Thunder strikes them). */
-  use(player: string, now: number, x: number, z: number, yaw: number, ahead: string[] = []): UseResult {
+  /** `y` = ground height under the kart (only matters on tracks with a bridge). */
+  use(player: string, now: number, x: number, z: number, yaw: number, ahead: string[] = [], y = 0): UseResult {
     const h = this.holder(player);
     if (!h.item) return null;
     const item = h.item;
     let hazard: Hazard | undefined;
     if (item === 'shield') h.shieldUntil = now + SHIELD_MS;
     if (item === 'banana' || item === 'bounce') {
-      hazard = { id: this.nextId++, kind: item, x: x - Math.sin(yaw) * 2.6, z: z - Math.cos(yaw) * 2.6, owner: player, at: now };
+      hazard = { id: this.nextId++, kind: item, x: x - Math.sin(yaw) * 2.6, z: z - Math.cos(yaw) * 2.6, y: Math.max(0, y), owner: player, at: now };
     }
     if (item === 'rocket') {
-      const near = nearest(this.path, x, z);
+      const near = nearestAt(this.path, x, z, y);
       const p = this.path.pts[near.i], ry = yawAt(this.path, near.i);
       const off = Math.max(-5, Math.min(5, (x - p.x) * Math.cos(ry) - (z - p.z) * Math.sin(ry)));
       hazard = { id: this.nextId++, kind: 'rocket', x, z, owner: player, at: now, i0: near.i, off };
     }
     if (item === 'star') {
-      const near = nearest(this.path, x, z);
+      const near = nearestAt(this.path, x, z, y);
       hazard = { id: this.nextId++, kind: 'star', x, z, owner: player, at: now, i0: near.i, off: Math.random() * 6 };
     }
     let thunder: ThunderHit[] | undefined;

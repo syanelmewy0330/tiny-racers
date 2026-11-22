@@ -71,6 +71,21 @@ export function nearest(path: TrackPath, x: number, z: number, hint?: number): {
   return { i: best, dist: Math.sqrt(bd) };
 }
 
+/**
+ * Like `nearest`, but on tracks where one road passes over another it only looks at the road
+ * at about the given height (y = ground level under the kart), so the bridge and the road
+ * below it are never mixed up.
+ */
+export function nearestAt(path: TrackPath, x: number, z: number, y: number): { i: number; dist: number } {
+  let best = 0, bd = Infinity;
+  path.pts.forEach((p, i) => {
+    if (Math.abs(p.y - y) > 2.5) return;
+    const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+    if (d < bd) { bd = d; best = i; }
+  });
+  return bd === Infinity ? nearest(path, x, z) : { i: best, dist: Math.sqrt(bd) };
+}
+
 /** How far the index moved, accounting for wrapping past the start line. */
 export function indexDelta(path: TrackPath, from: number, to: number): number {
   const N = path.pts.length;

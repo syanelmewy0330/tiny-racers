@@ -30,7 +30,7 @@ export function harborScenery(scene: THREE.Object3D, track: Track, rnd: () => nu
 
   // ---------------- the harbour: dark glossy water past the quay, with neon reflections
   {
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(1400, 700), new THREE.MeshStandardMaterial({ color: 0x0d1430, roughness: 0.45, metalness: 0.2, emissive: 0x0a0f2a, emissiveIntensity: 0.6 }));
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(1400, 700), new THREE.MeshStandardMaterial({ color: 0x0d1430, roughness: 0.85, metalness: 0.1, emissive: 0x0a0f2a, emissiveIntensity: 0.6 }));
     water.rotation.x = -Math.PI / 2; water.position.set(cx, 0.05, QUAY + 350); scene.add(water);
     // quay edge: a pale concrete lip with yellow safety paint and bollards
     const lip = new THREE.Mesh(new THREE.BoxGeometry(1400, 0.6, 1.6), new THREE.MeshStandardMaterial({ color: 0x5a5e68, roughness: 0.9 }));

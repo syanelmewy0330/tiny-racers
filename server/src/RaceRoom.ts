@@ -245,7 +245,7 @@ export class RaceRoom extends Room {
     if (!this.racing(p)) return;
     const order = this.ranking().filter((o) => o.finishedAt === null);
     const ahead = order.slice(0, order.indexOf(p)).map((o) => o.id);
-    const r = this.items.use(p.id, this.clock.currentTime, p.snap.x, p.snap.z, p.snap.yaw, ahead);
+    const r = this.items.use(p.id, this.clock.currentTime, p.snap.x, p.snap.z, p.snap.yaw, ahead, p.snap.y - 0.75);
     if (r) this.broadcast('item:used', { id: p.id, item: r.item, usesLeft: r.usesLeft, hazard: r.hazard, thunder: r.thunder } satisfies ItemUsedMessage);
   }
 
