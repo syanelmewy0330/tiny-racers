@@ -5,7 +5,7 @@ import type { RaceSession } from './Network';
 
 export interface SessionEvents {
   world?: (w: WorldMessage) => void;
-  raceStart?: (d: { raceId: number; countdown: number; grid: Record<string, number> }) => void;
+  raceStart?: (d: { raceId: number; countdown: number; grid: Record<string, number>; track?: string }) => void;
   go?: () => void;
   finish?: (d: { id: string; time: number; place: number }) => void;
   results?: (rows: ResultRow[]) => void;
@@ -97,6 +97,8 @@ export class ColyseusSession implements RaceSession {
 
   /** Pick a different racer while in the lobby. */
   setCharacter(id: string) { this.room.send('character', id); }
+  /** Host only: the track for the next race. */
+  setTrack(id: string) { this.room.send('track', id); }
 
   sendSnapshot(s: KartSnapshot) {
     this.room.send('snap', {

@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { nearest, yawAt } from '@shared/trackMath';
+import { nearest, nearShortcut, yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
-import { SUN_DIR, HAZE } from './Look';
-import { THEME, IS_FROST } from './theme';
+import { THEME, isFrost, SUN_DIR, HAZE } from './theme';
 import { frostScenery, type Snowfall } from './frostScenery';
 
 /** Sky, lights, ground and scenery around the track. */
@@ -11,30 +10,36 @@ export class Environment {
   readonly sun: THREE.DirectionalLight;
   private clouds = new THREE.Group();
   private snow: Snowfall | null = null;
+  /** Everything this track's world added, so it can be removed when the track changes. */
+  private root = new THREE.Group();
+  private colliders: RAPIER.Collider[] = [];
 
   constructor(scene: THREE.Scene, world: RAPIER.World, track: Track) {
-    scene.background = HAZE.clone();
+    scene.add(this.root);
+        scene.background = HAZE.clone();
     scene.fog = new THREE.Fog(HAZE, THEME.fogNear, THEME.fogFar);
 
     // golden-hour light: warm low sun, cool sky fill, warm bounce from the ground
-    scene.add(new THREE.HemisphereLight(THEME.hemiSky, THEME.hemiGround, THEME.hemiPower));
+    this.root.add(new THREE.HemisphereLight(THEME.hemiSky, THEME.hemiGround, THEME.hemiPower));
     this.sun = new THREE.DirectionalLight(THEME.sunColor, THEME.sunPower);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 160;
     this.sun.shadow.bias = -0.0005;
-    scene.add(this.sun, this.sun.target);
+    this.root.add(this.sun, this.sun.target);
 
     // Ground: big grassy (or snowy) field, plus a physics floor under everything.
     const ground = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshStandardMaterial({ color: THEME.ground, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2; ground.position.set(90, 0, 45); ground.receiveShadow = true;
-    scene.add(ground);
-    world.createCollider(RAPIER.ColliderDesc.cuboid(800, 1, 800).setTranslation(90, -1, 45).setFriction(0));
+    this.root.add(ground);
+    this.colliders.push(world.createCollider(RAPIER.ColliderDesc.cuboid(800, 1, 800).setTranslation(90, -1, 45).setFriction(0)));
 
     const rnd = mulberry(42);
-    const clear = (x: number, z: number, margin: number) => nearest(track.path, x, z).dist > track.wallOffset + margin;
-    scene.add(startArch(track));
-    if (IS_FROST) { this.snow = frostScenery(scene, track, rnd, clear); return; }
+    const short = track.route.shortcut;
+    const clear = (x: number, z: number, margin: number) => nearest(track.path, x, z).dist > track.wallOffset + margin
+      && (!short || nearShortcut(short, x, z).dist > short.halfWidth + 9 + margin);
+    this.root.add(startArch(track));
+    if (isFrost()) { this.snow = frostScenery(this.root, track, rnd, clear); return; }
 
     // Trees (instanced: cheap to draw hundreds)
     const trunkGeo = new THREE.CylinderGeometry(0.35, 0.5, 2.4, 8);
@@ -53,7 +58,7 @@ export class Environment {
       n++;
     }
     trunks.count = crowns.count = n;
-    for (const m of [trunks, crowns]) { m.castShadow = true; m.receiveShadow = true; scene.add(m); }
+    for (const m of [trunks, crowns]) { m.castShadow = true; m.receiveShadow = true; this.root.add(m); }
 
     // Flowers and mushrooms near the walls
     const flowerGeo = new THREE.SphereGeometry(0.28, 8, 6);
@@ -66,12 +71,12 @@ export class Environment {
       o.position.set(x, 0.25, z); o.scale.setScalar(0.7 + rnd() * 0.8); o.updateMatrix(); flowers.setMatrixAt(n, o.matrix);
       flowers.setColorAt(n, new THREE.Color(fcols[Math.floor(rnd() * 4)])); n++;
     }
-    flowers.count = n; scene.add(flowers);
+    flowers.count = n; this.root.add(flowers);
 
     for (let k = 0; k < 18; k++) {
       let x = 0, z = 0;
       for (let t = 0; t < 50; t++) { x = -40 + rnd() * 260; z = -50 + rnd() * 190; if (clear(x, z, 3)) break; }
-      scene.add(mushroom(x, z, 0.8 + rnd()));
+      this.root.add(mushroom(x, z, 0.8 + rnd()));
     }
 
     // Distant rolling hills
@@ -80,7 +85,7 @@ export class Environment {
       const a = (k / 14) * Math.PI * 2, r = 230 + rnd() * 60;
       const hill = new THREE.Mesh(new THREE.SphereGeometry(40 + rnd() * 30, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), hillMat);
       hill.position.set(90 + Math.cos(a) * r, -5, 45 + Math.sin(a) * r); hill.scale.y = 0.5 + rnd() * 0.4;
-      scene.add(hill);
+      this.root.add(hill);
     }
 
     // Fluffy clouds
@@ -94,7 +99,18 @@ export class Environment {
       c.position.set(-80 + rnd() * 340, 45 + rnd() * 25, -90 + rnd() * 270);
       this.clouds.add(c);
     }
-    scene.add(this.clouds);
+    this.root.add(this.clouds);
+  }
+
+  /** Remove this world (scenery, lights, ground) when switching tracks. */
+  dispose(scene: THREE.Scene, world: RAPIER.World) {
+    scene.remove(this.root);
+    for (const c of this.colliders) world.removeCollider(c, false);
+    this.root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      for (const x of Array.isArray(m.material) ? m.material : m.material ? [m.material] : []) { (x as THREE.MeshStandardMaterial).map?.dispose(); x.dispose(); }
+    });
   }
 
   /** Keep the sun's shadow box centred on the kart. */
@@ -124,11 +140,11 @@ function mushroom(x: number, z: number, s: number): THREE.Group {
 function startArch(track: Track): THREE.Group {
   const g = new THREE.Group();
   const p = track.path.pts[0], yaw = yawAt(track.path, 0), w = track.wallOffset + 1;
-  const postMat = new THREE.MeshStandardMaterial({ color: IS_FROST ? 0x3a3f47 : 0xf05b65 });
+  const postMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0x3a3f47 : 0xf05b65 });
   for (const sx of [-1, 1]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 9, 12), postMat);
     post.position.set(sx * w, 4.5, 0); post.castShadow = true; g.add(post);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial(IS_FROST ? { color: 0xff8a00, emissive: 0xff8a00, emissiveIntensity: 1.6 } : { color: 0xe5a94b }));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial(isFrost() ? { color: 0xff8a00, emissive: 0xff8a00, emissiveIntensity: 1.6 } : { color: 0xe5a94b }));
     ball.position.set(sx * w, 9.4, 0); g.add(ball);
   }
   const c = document.createElement('canvas'); c.width = 1024; c.height = 160;

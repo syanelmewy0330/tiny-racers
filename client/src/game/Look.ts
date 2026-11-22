@@ -4,7 +4,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { THEME } from './theme';
+import { THEME, SUN_DIR, HAZE } from './theme';
+export { SUN_DIR, HAZE };
 
 /**
  * The game's "camera look" (design board v3.0): a warm golden-hour sky, haze, distant
@@ -20,9 +21,6 @@ const store = {
 /** Frame rate below which "auto" graphics steps down. */
 const SLOW_FPS = 45;
 
-/** Where the sun sits (direction towards it). Low and warm, like late afternoon. */
-export const SUN_DIR = THEME.sunDir.clone();
-export const HAZE = new THREE.Color(THEME.haze);
 
 const GRADE = {
   uniforms: {
@@ -73,9 +71,23 @@ export class Look {
     // auto: start where this computer ended up last time
     this.quality = this.manual ? saved as Quality : store.get(AUTO_KEY) === 'low' || store.get(AUTO_KEY) === 'lowest' ? 'low' : 'high';
     if (!this.manual && store.get(AUTO_KEY) === 'lowest') { this.shadowsOff = true; renderer.shadowMap.enabled = false; }
-    scene.add(makeSky());
-    scene.add(makeMountains());
+    this.sky = makeSky();
+    this.mountains = makeMountains();
+    scene.add(this.sky, this.mountains);
     this.apply();
+  }
+
+  private sky: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
+  private mountains: THREE.Group;
+
+  /** The track changed: recolour the sky and rebuild the distant mountains. */
+  applyTheme() {
+    const u = this.sky.material.uniforms;
+    (u.uTop.value as THREE.Vector3).set(...THEME.skyTop); (u.uMid.value as THREE.Vector3).set(...THEME.skyMid); (u.uGlow.value as THREE.Vector3).set(...THEME.sunGlow);
+    this.scene.remove(this.mountains);
+    this.mountains.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
+    this.mountains = makeMountains();
+    this.scene.add(this.mountains);
   }
 
   setQuality(q: Quality) {

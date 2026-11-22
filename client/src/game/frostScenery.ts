@@ -14,7 +14,7 @@ export interface Snowfall { update(target: THREE.Vector3, time: number): void }
 
 type Clear = (x: number, z: number, margin: number) => boolean;
 
-export function frostScenery(scene: THREE.Scene, track: Track, rnd: () => number, clear: Clear): Snowfall {
+export function frostScenery(scene: THREE.Object3D, track: Track, rnd: () => number, clear: Clear): Snowfall {
   const pts = track.path.pts, N = pts.length;
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (const p of pts) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z); }

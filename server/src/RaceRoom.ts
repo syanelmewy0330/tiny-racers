@@ -1,14 +1,16 @@
 import { Room, type Client } from '@colyseus/core';
 import { MAX_PLAYERS, LAPS, COUNTDOWN_SECONDS } from '../../shared/src/constants.ts';
 import { CHARACTERS, isCharacterId } from '../../shared/src/characters.ts';
-import { buildPath, nearest, indexDelta } from '../../shared/src/trackMath.ts';
-import { MEADOW_LOOP } from '../../shared/src/tracks/meadowLoop.ts';
+import { buildRoute, locate, indexDelta, type Route } from '../../shared/src/trackMath.ts';
+import { MEADOW_LOOP, type TrackDef } from '../../shared/src/tracks/meadowLoop.ts';
+import { FROSTBITE_PASS } from '../../shared/src/tracks/frostbitePass.ts';
 import type { KartSnapshot } from '../../shared/src/types.ts';
 import type { RoomPhase, WorldMessage, PlayerView, ResultRow, ItemGotMessage, ItemUsedMessage, ItemHitMessage } from '../../shared/src/protocol.ts';
 import { ItemWorld } from '../../shared/src/items.ts';
 
-const PATH = buildPath(MEADOW_LOOP, 1);
-const N = PATH.pts.length;
+/** Tracks a room can race on. */
+const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS];
+const ROUTES = new Map(TRACKS.map((t) => [t.id, buildRoute(t)]));
 const MAX_SPEED = 62;            // m/s; faster than any legal boost, so only cheats or glitches exceed it
 const FINISH_GRACE_MS = 30_000;  // after the winner finishes, others get this long
 const RECONNECT_SECONDS = 20;    // how long a dropped player's place is kept
@@ -47,10 +49,23 @@ export class RaceRoom extends Room {
   private autoStartAt = 0;
   private lastResults: ResultRow[] | null = null;
   /** Power-ups: boxes, held items, shields and jellies. The server decides all of it. */
-  private items = new ItemWorld(PATH, MEADOW_LOOP.roadHalfWidth);
+  private track: TrackDef = MEADOW_LOOP;
+  private route: Route = ROUTES.get(MEADOW_LOOP.id)!;
+  private get N() { return this.route.path.pts.length; }
+  private items = new ItemWorld(this.route.path, MEADOW_LOOP.roadHalfWidth);
+
+  /** Change track between races: new centre line for lap counting and new item boxes. */
+  private setTrack(def: TrackDef) {
+    if (def.id === this.track.id) return;
+    this.track = def; this.route = ROUTES.get(def.id)!;
+    this.items = new ItemWorld(this.route.path, def.roadHalfWidth);
+  }
+  /** Quick races: a random track each time. */
+  private randomTrack() { this.setTrack(TRACKS[Math.floor(Math.random() * TRACKS.length)]); }
 
   onCreate(options: { public?: boolean } = {}) {
     this.isPublic = !!options.public;
+    if (this.isPublic) this.randomTrack();
     // Codes made on the Europe server start with E, so the game knows where to join them.
     const pick = (letters: string) => letters[Math.floor(Math.random() * letters.length)];
     const first = REGION === 'eu' ? 'E' : pick(CODE_LETTERS.replace('E', ''));
@@ -58,6 +73,11 @@ export class RaceRoom extends Room {
     this.autoDispose = true;
 
     this.onMessage('start', (client: Client) => { if (client.sessionId === this.hostId && this.everyoneReady()) this.startRace(); });
+    // Host picks the track while waiting (not mid-race).
+    this.onMessage('track', (client: Client, id: unknown) => {
+      const def = TRACKS.find((t) => t.id === id);
+      if (def && client.sessionId === this.hostId && !this.isPublic && (this.phase === 'lobby' || this.phase === 'results')) this.setTrack(def);
+    });
     this.onMessage('ready', (client: Client, on: unknown) => {
       const p = this.players.get(client.sessionId);
       if (p && (this.phase === 'lobby' || this.phase === 'results')) p.ready = on === true;
@@ -148,7 +168,7 @@ export class RaceRoom extends Room {
     this.raceId++;
     this.phase = 'countdown';
     this.lock();   // nobody joins mid-race
-    const back = 12;
+    const back = 12, N = this.N;
     for (const p of this.players.values()) {
       p.index = (N - back - Math.floor(p.slot / 2) * 6 + N) % N;
       p.progress = -(back + Math.floor(p.slot / 2) * 6);
@@ -156,7 +176,7 @@ export class RaceRoom extends Room {
     }
     this.lastResults = null;
     this.items.reset();
-    this.broadcast('race:start', { raceId: this.raceId, countdown: COUNTDOWN_SECONDS, grid: Object.fromEntries([...this.players.values()].map((p) => [p.id, p.slot])) });
+    this.broadcast('race:start', { raceId: this.raceId, track: this.track.id, countdown: COUNTDOWN_SECONDS, grid: Object.fromEntries([...this.players.values()].map((p) => [p.id, p.slot])) });
     this.clock.setTimeout(() => {
       if (this.phase !== 'countdown') return;
       this.phase = 'racing'; this.raceStartedAt = this.clock.currentTime; this.firstFinishAt = 0;
@@ -184,8 +204,8 @@ export class RaceRoom extends Room {
       const sentDt = sentAt !== undefined && p.snap.t !== undefined ? sentAt - p.snap.t : 0;
       const dt = Math.max(0.03, serverDt, Math.min(sentDt, serverDt + 0.5));
       const moved = Math.hypot(x - p.snap.x, z - p.snap.z);
-      const near = nearest(PATH, x, z, p.index);
-      const isRespawn = near.dist < 1.5 && Math.abs(indexDelta(PATH, p.index, near.i)) < 40;
+      const near = locate(this.route, x, z, p.index);
+      const isRespawn = near.dist < 1.5 && Math.abs(indexDelta(this.route.path, p.index, near.i)) < 40;
       if (moved / dt > MAX_SPEED && !isRespawn) {
         client.send('correct', { x: p.snap.x, z: p.snap.z, yaw: p.snap.yaw });  // impossible jump: put them back
         return;
@@ -195,10 +215,10 @@ export class RaceRoom extends Room {
     p.lastSnapAt = now;
 
     if (this.phase === 'racing' && p.finishedAt === null) {
-      const near = nearest(PATH, x, z, p.index);
-      p.progress += indexDelta(PATH, p.index, near.i);
+      const near = locate(this.route, x, z, p.index);
+      p.progress += indexDelta(this.route.path, p.index, near.i);
       p.index = near.i;
-      if (p.progress >= LAPS * N) {
+      if (p.progress >= LAPS * this.N) {
         p.finishedAt = now - this.raceStartedAt;
         if (!this.firstFinishAt) this.firstFinishAt = now;
         this.broadcast('race:finish', { id: p.id, time: p.finishedAt, place: this.ranking().findIndex((r) => r.id === p.id) + 1 });
@@ -253,6 +273,7 @@ export class RaceRoom extends Room {
       this.lastResults = results;
       this.broadcast('race:results', { raceId: this.raceId, results });
       this.unlock();
+      if (this.isPublic) this.randomTrack();
     }
   }
 
@@ -270,11 +291,11 @@ export class RaceRoom extends Room {
     const order = this.ranking();
     const players: PlayerView[] = order.map((p, i) => ({
       id: p.id, name: p.name, character: p.character, slot: p.slot, ...p.snap,
-      lap: Math.min(LAPS, Math.max(1, Math.floor(p.progress / N) + 1)), place: i + 1, finished: p.finishedAt !== null,
+      lap: Math.min(LAPS, Math.max(1, Math.floor(p.progress / this.N) + 1)), place: i + 1, finished: p.finishedAt !== null,
       ready: p.ready, connected: p.connected, shield: this.items.shielded(p.id, now),
     }));
     const autoStartIn = this.autoStartAt ? Math.max(0, Math.ceil((this.autoStartAt - this.clock.currentTime) / 1000)) : null;
-    const world: WorldMessage = { phase: this.phase, hostId: this.hostId, code: this.roomId, raceId: this.raceId, isPublic: this.isPublic, autoStartIn, players,
+    const world: WorldMessage = { phase: this.phase, hostId: this.hostId, code: this.roomId, raceId: this.raceId, isPublic: this.isPublic, track: this.track.id, autoStartIn, players,
       items: { hidden: this.items.hiddenBoxes(now), hazards: this.items.hazards } };
     this.broadcast('world', world);
   }

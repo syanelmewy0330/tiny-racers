@@ -7,6 +7,7 @@ import type { TrackDef } from './meadowLoop';
 export const FROSTBITE_PASS: TrackDef = {
   id: 'frostbite-pass',
   name: 'Frostbite Pass',
+  blurb: 'Snowy mountain pass at blue hour: ice patches, a tunnel and a frozen-pond shortcut.',
   theme: 'frost',
   points: [
     [0, 64], [0, -26], [32, -66], [92, -60], [112, -12], [158, -6], [184, -52],
@@ -17,7 +18,9 @@ export const FROSTBITE_PASS: TrackDef = {
   boostPads: [0.15, 0.45, 0.6, 0.88],
   ramps: [{ t: 0.07, side: -1 }, { t: 0.68, side: 1 }],
   // snow piles (they work like hay bales)
-  hayBales: [{ t: 0.22, side: 1 }, { t: 0.31, side: -1 }, { t: 0.72, side: -1 }, { t: 0.95, side: 1 }],
+  hayBales: [{ t: 0.22, side: 1 }, { t: 0.355, side: -1 }, { t: 0.72, side: -1 }, { t: 0.95, side: 1 }],
   icePatches: [{ t: 0.39, len: 22, side: 0 }, { t: 0.77, len: 24, side: 1 }],
   tunnel: { from: 0.565, to: 0.625 },
+  // across the frozen pond inside the hairpin: shorter, but all ice
+  shortcut: { from: 0.3, to: 0.45, via: [[120, -41], [152, -39]], halfWidth: 4.5 },
 };

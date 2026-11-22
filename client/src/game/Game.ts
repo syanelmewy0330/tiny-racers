@@ -3,7 +3,8 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { PHYSICS_HZ } from '@shared/constants';
 import { characterById } from '@shared/characters';
 import type { PlayerView } from '@shared/protocol';
-import { TRACK, THEME } from './theme';
+import { THEME, useTrack, savedTrack, trackById } from './theme';
+import type { TrackDef } from '@shared/tracks/meadowLoop';
 import { yawAt, nearest } from '@shared/trackMath';
 import { Input } from './Input';
 import { Track } from './Track';
@@ -34,8 +35,8 @@ export class Game {
   private camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1600);
   private world = new RAPIER.World({ x: 0, y: -25, z: 0 });
   private input = new Input();
-  private track: Track;
-  private env: Environment;
+  private track!: Track;
+  private env!: Environment;
   private kart: KartController;
   private model: RacerModel;
   private rig: CameraRig;
@@ -66,7 +67,9 @@ export class Game {
   private look!: Look;
   private items: Powerups;
   private magnetHint = 0;
-  private obstacles: Obstacles;
+  private obstacles!: Obstacles;
+  /** The track picked for practice races (remembered). */
+  private practiceTrack = savedTrack().id;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -74,14 +77,9 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = THEME.exposure;
 
     toyEnvironment(this.renderer, this.scene, 0.35);
-    this.track = new Track(TRACK, this.world);
-    this.scene.add(this.track.group);
-    this.env = new Environment(this.scene, this.world, this.track);
-    this.obstacles = new Obstacles(this.track, this.world);
-    this.scene.add(this.obstacles.group);
+    this.loadTrack(savedTrack());
     this.look = new Look(this.renderer, this.scene, this.camera);
 
     const ch = characterById('bubbles');
@@ -90,7 +88,7 @@ export class Game {
     this.scene.add(this.model.root);
     this.rig = new CameraRig(this.camera);
     this.remotes = new RemoteKarts(this.scene, this.world);
-    this.race = new RaceTracker(this.track.path);
+    this.race = new RaceTracker(this.track.route);
     this.items = new Powerups(this.scene, this.track.path, this.track.def.roadHalfWidth);
     this.items.onSlot = (item, uses, rolling) => {
       if (rolling) this.hud.setItemRolling(ITEM_ICONS[rolling]);
@@ -110,8 +108,6 @@ export class Game {
 
     this.hud = new Hud(uiRoot);
     sfx.onChange = () => { this.hud.setPauseSound(); if (this.mode === 'race' && !this.hud.paused) this.hud.say(`Sound: ${sfx.label}`, 1); };
-    this.obstacles.onLaunch = () => { this.model.react(); this.hud.say('Big air!', 0.9); };
-    this.obstacles.onHay = (turn) => { this.kart.yaw += turn; this.model.react(); };
     this.hud.onRestart = () => this.startRace();
     this.hud.onMenu = () => this.toMenu();
     this.look.onAutoStep = (what) => {
@@ -144,10 +140,36 @@ export class Game {
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
+  /** Build (or swap to) a track: road, scenery, obstacles, sky colours, item boxes and minimap. */
+  loadTrack(def: TrackDef) {
+    if (this.track?.def.id === def.id) return;
+    useTrack(def);
+    if (this.track) {
+      this.scene.remove(this.track.group); this.track.dispose(this.world);
+      this.env.dispose(this.scene, this.world);
+      this.scene.remove(this.obstacles.group); this.obstacles.dispose(this.world);
+    }
+    this.renderer.toneMappingExposure = THEME.exposure;
+    this.track = new Track(def, this.world);
+    this.scene.add(this.track.group);
+    this.env = new Environment(this.scene, this.world, this.track);
+    this.obstacles = new Obstacles(this.track, this.world);
+    this.scene.add(this.obstacles.group);
+    this.obstacles.onLaunch = () => { this.model.react(); this.hud.say('Big air!', 0.9); };
+    this.obstacles.onHay = (turn) => { this.kart.yaw += turn; this.model.react(); };
+    // the rest exists only after the first build
+    this.look?.applyTheme();
+    this.race?.setRoute(this.track.route);
+    this.items?.setTrack(this.track.path, def.roadHalfWidth);
+    this.hud?.setTrack(this.track.path.pts);
+  }
+
   /** Practice on your own: the title screen's Practice button, and "Race again". */
-  startRace(character = this.practiceCharacter) {
+  startRace(character = this.practiceCharacter, trackId = this.practiceTrack) {
     if (this.online) this.leaveRoom();
     this.practiceCharacter = character;
+    this.practiceTrack = trackId;
+    this.loadTrack(trackById(trackId));
     this.setCharacter(character);
     this.model.setMood('race');
     this.mode = 'race'; this.raceSerial++;
@@ -201,6 +223,7 @@ export class Game {
       },
       raceStart: (d) => {
         this.mode = 'race'; this.raceSerial++;
+        this.loadTrack(trackById(d.track ?? s.latest?.track));
         this.hud.show(true); this.hud.hideResults();
         this.placeOnGrid(d.grid[s.me] ?? 0);
         this.model.setMood('race'); this.remotes.setMoods(null);
@@ -341,13 +364,16 @@ export class Game {
   private lastBeep = 0;
   private lastLapHeard = 1;
   private lastSpark = 0;
+  private wasOnIce = false;
   /** Engine, drift, countdown and lap sounds, once per drawn frame. */
   private sounds(counting: boolean, countdown: number | null, lap: number, frozen: boolean) {
     const racing = this.mode === 'race';
     const k = this.kart, top = 31;
     const drift = k.driftDir !== 0 ? 1 + k.driftLevel : 0;
-    sfx.drive(racing && !frozen, Math.abs(k.forwardSpeed) / top, racing && !counting && this.input.read().throttle, drift);
+    sfx.drive(racing && !frozen, Math.abs(k.forwardSpeed) / top, racing && !counting && this.input.read().throttle, drift, k.onIce && Math.abs(k.forwardSpeed) > 3);
     if (!racing) return;
+    if (k.onIce && !this.wasOnIce && Math.abs(k.forwardSpeed) > 6) sfx.play('ice');
+    this.wasOnIce = k.onIce;
     if (drift > 1 && k.driftLevel > this.lastSpark) sfx.play('drift');
     this.lastSpark = drift ? k.driftLevel : 0;
     if (counting && countdown !== null) {

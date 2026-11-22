@@ -2,6 +2,8 @@ import { CHARACTERS, characterById } from '@shared/characters';
 import { portraitUrl, saveCharacter } from './CharacterPicker';
 import { MAX_PLAYERS } from '@shared/constants';
 import type { ColyseusSession } from '../net/ColyseusSession';
+import { trackCards } from './TrackPicker';
+import { trackById } from '../game/theme';
 
 /** Waiting room: shows the invite code and who has joined. The host starts the race. */
 export function showLobby(parent: HTMLElement, s: ColyseusSession, onLeave: () => void): () => void {
@@ -14,6 +16,8 @@ export function showLobby(parent: HTMLElement, s: ColyseusSession, onLeave: () =
       <p class="sub" data-how>Send this code to your friends. They open Tiny Racers, type it next to <b>Join</b>, and appear here.</p>
       <ul class="players" data-list></ul>
       <div class="mini-picks" data-picks><span class="sub">Your racer:</span></div>
+      <p class="sub" data-track-label style="margin-top:8px">Track</p>
+      <div data-tracks></div>
       <p class="notice" data-notice hidden></p>
       <p class="sub" data-note></p>
       <p class="sub" data-net></p>
@@ -38,8 +42,16 @@ export function showLobby(parent: HTMLElement, s: ColyseusSession, onLeave: () =
     return { b, id: ch.id };
   });
 
+  // track: the host picks, everyone else sees the choice
+  const tracks = trackCards(s.latest?.track ?? 'meadow-loop', (id) => s.setTrack(id), { compact: true });
+  q<HTMLElement>('[data-tracks]').replaceWith(tracks.el);
+
   const render = () => {
     const w = s.latest; if (!w) return;
+    tracks.mark(w.track);
+    tracks.setEnabled(s.isHost && !w.isPublic);
+    q<HTMLElement>('[data-track-label]').textContent = w.isPublic ? `Track: ${trackById(w.track).name} (picked at random)`
+      : s.isHost ? 'Pick the track:' : `Track: ${trackById(w.track).name} (the host picks)`;
     const list = q<HTMLElement>('[data-list]'); list.textContent = '';
     for (const p of [...w.players].sort((a, b) => a.slot - b.slot)) {
       const li = document.createElement('li');

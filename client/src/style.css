@@ -297,3 +297,20 @@ details[open] { display: flex; flex-direction: column; gap: 6px; }
 .srv:not(.on) b::before { content: '○ '; color: var(--text-dim); }
 .srv .ms { color: var(--text-dim); font-weight: 600; }
 .srv .ms.good { color: var(--sage); }
+
+/* ---------- track picker ---------- */
+.tracks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.track-card { border: 2px solid rgba(255,255,255,.08); border-radius: var(--radius); background: var(--midnight-2); padding: 10px; text-align: left; cursor: pointer;
+  font: inherit; color: var(--text); display: flex; flex-direction: column; gap: 4px; transition: transform .12s, background .12s; }
+.track-card:hover:not(:disabled) { transform: translateY(-3px); background: var(--midnight-3); }
+.track-card[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--amber), 0 10px 24px rgba(229,169,75,.25); background: var(--midnight-3); }
+.track-card:disabled { cursor: default; opacity: .55; }
+.track-card:disabled[aria-pressed="true"] { opacity: 1; }
+.track-card .map { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 200 / 120; }
+.track-card .map svg { width: 100%; height: 100%; display: block; }
+.track-card .tag { position: absolute; left: 8px; top: 8px; font-size: .68rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  background: rgba(28,31,38,.75); padding: 3px 8px; border-radius: 99px; }
+.track-card b { font-family: var(--display); font-size: 1.15rem; font-style: italic; }
+.track-card .blurb { font-size: .8rem; color: var(--text-dim); }
+.tracks.compact .track-card .blurb { display: none; }
+.tracks.compact .track-card b { font-size: 1rem; }

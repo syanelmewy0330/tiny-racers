@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { buildPath, yawAt, type TrackPath } from '@shared/trackMath';
+import { buildPath, buildRoute, nearest, nearShortcut, yawAt, type Route, type TrackPath } from '@shared/trackMath';
 import type { TrackDef } from '@shared/tracks/meadowLoop';
 import { THEME } from './theme';
 
@@ -9,6 +9,9 @@ export interface BoostPad { index: number; x: number; z: number; yaw: number; me
 /** Builds the track's 3D meshes and its invisible physics walls from a shared TrackDef. */
 export class Track {
   readonly path: TrackPath;
+  /** Centre line plus shortcut, for lap counting. */
+  readonly route: Route;
+  private bodies: RAPIER.RigidBody[] = [];
   readonly group = new THREE.Group();
   readonly pads: BoostPad[] = [];
   readonly wallOffset: number;
@@ -18,6 +21,7 @@ export class Track {
 
   constructor(readonly def: TrackDef, world: RAPIER.World) {
     this.path = buildPath(def, 1);
+    this.route = buildRoute(def, this.path);
     this.wallOffset = def.roadHalfWidth + def.shoulder;
     const N = this.path.pts.length;
 
@@ -29,6 +33,7 @@ export class Track {
     this.group.add(this.startLine());
     this.group.add(this.walls(world));
     this.icePatches();
+    if (this.route.shortcut) this.group.add(this.shortcutSurface());
 
     // Boost pads (design board v3.0): charcoal steel frame, glowing racing-orange chevrons.
     this.padTexture = this.makePadTexture();
@@ -59,8 +64,22 @@ export class Track {
 
   update(time: number) { this.padTexture.offset.y = -(time * 1.6) % 1; }
 
-  /** Is the point (x, z), near centre-line sample i, on an ice patch? */
+  /** Remove the road's physics walls (when switching tracks). Meshes go with the group. */
+  dispose(world: RAPIER.World) {
+    for (const b of this.bodies) world.removeRigidBody(b);
+    this.bodies = [];
+    this.group.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); });
+  }
+
+  /** Is (x, z) on the shortcut's surface (off the main road)? */
+  onShortcut(x: number, z: number): boolean {
+    const sc = this.route.shortcut;
+    return !!sc && nearShortcut(sc, x, z).dist < sc.halfWidth + 0.4 && nearest(this.path, x, z).dist > this.def.roadHalfWidth;
+  }
+
+  /** Is the point (x, z), near centre-line sample i, on an ice patch? The frozen-pond shortcut is all ice. */
   onIce(i: number, x: number, z: number): boolean {
+    if (this.route.shortcut && this.onShortcut(x, z)) return true;
     for (const p of this.ice) {
       if (i < p.a || i > p.b) continue;
       const c = this.path.pts[i], s = this.side(i), off = (x - c.x) * s.x + (z - c.z) * s.z;
@@ -150,32 +169,93 @@ export class Track {
     return m;
   }
 
-  /** Low candy-striped walls on both sides, each backed by a physics box. */
+  /**
+   * Low striped walls on both sides, each backed by a physics box. Where a shortcut leaves the
+   * road the wall has a gap, and the shortcut gets walls of its own.
+   */
   private walls(world: RAPIER.World): THREE.Group {
     const group = new THREE.Group(), pts = this.path.pts, N = pts.length, step = 3, H = 1.1;
+    const sc = this.route.shortcut;
     const geo = new THREE.BoxGeometry(1, H, 0.6);
     const mats = [new THREE.MeshStandardMaterial({ color: THEME.walls[0] }), new THREE.MeshStandardMaterial({ color: THEME.walls[1] })];
-    const meshes = [new THREE.InstancedMesh(geo, mats[0], Math.ceil(N / step) * 2), new THREE.InstancedMesh(geo, mats[1], Math.ceil(N / step) * 2)];
+    const cap = Math.ceil(N / step) * 2 + (sc ? sc.pts.length * 2 : 0);
+    const meshes = [new THREE.InstancedMesh(geo, mats[0], cap), new THREE.InstancedMesh(geo, mats[1], cap)];
     const counts = [0, 0];
     const o = new THREE.Object3D(), q = new THREE.Quaternion();
+    const wall = (ax: number, az: number, bx: number, bz: number, k: number) => {
+      const len = Math.hypot(bx - ax, bz - az) + 0.3, yaw = Math.atan2(bx - ax, bz - az);
+      const cx = (ax + bx) / 2, cz = (az + bz) / 2;
+      // physics: thin tall box
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(cx, H / 2, cz).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }));
+      world.createCollider(RAPIER.ColliderDesc.cuboid(0.3, 1.5, len / 2).setFriction(0).setRestitution(0.2), body);
+      this.bodies.push(body);
+      // visuals
+      o.position.set(cx, H / 2, cz); o.rotation.set(0, yaw + Math.PI / 2, 0); o.scale.set(len, 1, 1); o.updateMatrix();
+      const m = k % 2; meshes[m].setMatrixAt(counts[m]++, o.matrix);
+    };
     for (const sign of [1, -1]) {
       for (let i = 0, k = 0; i < N; i += step, k++) {
         const j = (i + step) % N, si = this.side(i), sj = this.side(j);
         const ax = pts[i].x + si.x * this.wallOffset * sign, az = pts[i].z + si.z * this.wallOffset * sign;
         const bx = pts[j].x + sj.x * this.wallOffset * sign, bz = pts[j].z + sj.z * this.wallOffset * sign;
-        const len = Math.hypot(bx - ax, bz - az) + 0.3, yaw = Math.atan2(bx - ax, bz - az);
-        const cx = (ax + bx) / 2, cz = (az + bz) / 2;
-        // physics: thin tall box
-        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-        const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(cx, H / 2, cz).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }));
-        world.createCollider(RAPIER.ColliderDesc.cuboid(0.3, 1.5, len / 2).setFriction(0).setRestitution(0.2), body);
-        // visuals
-        o.position.set(cx, H / 2, cz); o.rotation.set(0, yaw + Math.PI / 2, 0); o.scale.set(len, 1, 1); o.updateMatrix();
-        const m = k % 2; meshes[m].setMatrixAt(counts[m]++, o.matrix);
+        // gap where the shortcut leaves or rejoins the road
+        if (sc && nearShortcut(sc, (ax + bx) / 2, (az + bz) / 2).dist < sc.halfWidth + 1.2) continue;
+        wall(ax, az, bx, bz, k);
+      }
+    }
+    if (sc) {
+      const sp = sc.pts, off = sc.halfWidth + 0.3, s2 = 2;
+      for (const sign of [1, -1]) {
+        for (let i = 0, k = 0; i + s2 < sp.length; i += s2, k++) {
+          const si = scSide(sp, i), sj = scSide(sp, i + s2);
+          const ax = sp[i].x + si.x * off * sign, az = sp[i].z + si.z * off * sign;
+          const bx = sp[i + s2].x + sj.x * off * sign, bz = sp[i + s2].z + sj.z * off * sign;
+          // inside the main road's walls there is nothing to wall off
+          if (nearest(this.path, (ax + bx) / 2, (az + bz) / 2).dist < this.wallOffset + 0.4) continue;
+          wall(ax, az, bx, bz, k);
+        }
       }
     }
     meshes.forEach((m, i) => { m.count = counts[i]; m.castShadow = true; m.receiveShadow = true; group.add(m); });
     return group;
+  }
+
+  /** The shortcut: a frozen pond with an icy lane across it. */
+  private shortcutSurface(): THREE.Group {
+    const sc = this.route.shortcut!, sp = sc.pts, g = new THREE.Group();
+    // the pond, an ellipse along the shortcut, under everything else
+    const a = sp[0], b = sp[sp.length - 1], mid = sp[Math.floor(sp.length / 2)];
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const pond = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshStandardMaterial({ color: 0x9fcbf2, roughness: 0.08, metalness: 0.35, emissive: 0x6ca9e6, emissiveIntensity: 0.15 }));
+    pond.rotation.order = 'YXZ'; pond.rotation.y = Math.atan2(b.x - a.x, b.z - a.z); pond.rotation.x = -Math.PI / 2;
+    pond.scale.set(sc.halfWidth + 7, len * 0.36, 1);
+    pond.position.set(mid.x, 0.025, mid.z); pond.receiveShadow = true; g.add(pond);
+    // the icy lane itself
+    const tex = iceTexture();
+    const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xbfe2ff, roughness: 0.1, metalness: 0.3, emissive: 0x8ccfff, emissiveIntensity: 0.55, emissiveMap: tex });
+    const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+    sp.forEach((p, k) => {
+      const s = scSide(sp, k), h = sc.halfWidth + 0.3;
+      pos.push(p.x + s.x * h, 0.075, p.z + s.z * h, p.x - s.x * h, 0.075, p.z - s.z * h);
+      uv.push(0, k / 6, (2 * h) / 6, k / 6);
+      if (k < sp.length - 1) { const q = k * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    const lane = new THREE.Mesh(geo, mat); lane.receiveShadow = true; g.add(lane);
+    // a sky-blue arrow sign at the way in, so racers spot it
+    const p0 = sp[Math.min(sp.length - 1, 14)], s0 = scSide(sp, 14), yaw0 = Math.atan2(sp[16].x - sp[12].x, sp[16].z - sp[12].z);
+    for (const sign of [1, -1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.4, 8), new THREE.MeshStandardMaterial({ color: 0x1c1f26 }));
+      const x = p0.x + s0.x * (sc.halfWidth + 1) * sign, z = p0.z + s0.z * (sc.halfWidth + 1) * sign;
+      post.position.set(x, 1.2, z); g.add(post);
+      const flag = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.9), new THREE.MeshStandardMaterial({ color: 0x6ca9e6, emissive: 0x6ca9e6, emissiveIntensity: 0.8 }));
+      flag.position.set(x, 2.2, z); flag.rotation.y = yaw0; g.add(flag);
+    }
+    return g;
   }
 
   private makePadTexture(): THREE.CanvasTexture {
@@ -215,4 +295,11 @@ function iceTexture(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
+}
+
+/** Sideways unit vector of a sampled line at k (same handedness as Track.side). */
+function scSide(sp: { x: number; z: number }[], k: number): { x: number; z: number } {
+  const a = sp[Math.max(0, k - 2)], b = sp[Math.min(sp.length - 1, k + 2)];
+  const yaw = Math.atan2(b.x - a.x, b.z - a.z);
+  return { x: Math.cos(yaw), z: -Math.sin(yaw) };
 }

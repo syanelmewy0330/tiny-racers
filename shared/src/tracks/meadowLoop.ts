@@ -16,11 +16,20 @@ export interface TrackDef {
   icePatches?: { t: number; len: number; side: 1 | -1 | 0 }[];
   /** A tunnel the road drives through, from..to around the lap (0..1). */
   tunnel?: { from: number; to: number };
+  /**
+   * A shortcut off the main road: it leaves the centre line at `from` (0..1) and rejoins at `to`,
+   * passing through the `via` points (metres). `halfWidth` is half its width. Driving it counts
+   * as covering the road between from and to, so laps stay fair.
+   */
+  shortcut?: { from: number; to: number; via: [number, number][]; halfWidth: number };
+  /** One line for the track picker. */
+  blurb?: string;
 }
 
 export const MEADOW_LOOP: TrackDef = {
   id: 'meadow-loop',
   name: 'Meadow Loop',
+  blurb: 'Cherry blossoms, ramps and hay bales on a golden afternoon.',
   points: [
     [0, 40], [0, 0], [18, -20], [56, -19], [78, 4], [100, -14], [140, -23], [176, -9],
     [182, 27], [152, 49], [118, 45], [100, 64], [118, 86], [160, 81], [182, 99],

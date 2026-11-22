@@ -65,3 +65,51 @@ export function indexDelta(path: TrackPath, from: number, to: number): number {
   if (d > N / 2) d -= N;
   return d;
 }
+
+/** A shortcut as a centre line sampled every metre, plus where it leaves (a) and rejoins (b) the main road. */
+export interface ShortcutPath { a: number; b: number; pts: { x: number; z: number }[]; halfWidth: number }
+
+/** Everything lap counting needs: the main centre line and the shortcut, if the track has one. */
+export interface Route { path: TrackPath; shortcut: ShortcutPath | null; roadHalfWidth: number }
+
+export function buildRoute(track: TrackDef, path = buildPath(track, 1)): Route {
+  const sc = track.shortcut;
+  let shortcut: ShortcutPath | null = null;
+  if (sc) {
+    const N = path.pts.length, a = Math.floor(sc.from * N) % N, b = Math.floor(sc.to * N) % N;
+    const corners = [path.pts[a], ...sc.via.map(([x, z]) => ({ x, z })), path.pts[b]];
+    const pts: { x: number; z: number }[] = [];
+    for (let k = 0; k < corners.length - 1; k++) {
+      const p = corners[k], q = corners[k + 1], d = Math.hypot(q.x - p.x, q.z - p.z), n = Math.max(1, Math.round(d));
+      for (let s = 0; s < n; s++) pts.push({ x: p.x + (q.x - p.x) * (s / n), z: p.z + (q.z - p.z) * (s / n) });
+    }
+    pts.push(corners[corners.length - 1]);
+    shortcut = { a, b, pts, halfWidth: sc.halfWidth };
+  }
+  return { path, shortcut, roadHalfWidth: track.roadHalfWidth };
+}
+
+/** Nearest sample on a shortcut, as its position (0..1 along it) and the distance to it. */
+export function nearShortcut(sc: ShortcutPath, x: number, z: number): { f: number; dist: number } {
+  let best = 0, bd = Infinity;
+  sc.pts.forEach((p, k) => { const d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < bd) { bd = d; best = k; } });
+  return { f: best / (sc.pts.length - 1), dist: Math.sqrt(bd) };
+}
+
+/**
+ * Where a kart is along the lap. Like `nearest`, but a kart on the shortcut is placed between
+ * its two ends in proportion, and its distance is scaled so the shortcut's edge counts as the road's edge.
+ */
+export function locate(route: Route, x: number, z: number, hint?: number): { i: number; dist: number; onShortcut: boolean } {
+  const near = nearest(route.path, x, z, hint);
+  const sc = route.shortcut;
+  if (sc && near.dist > route.roadHalfWidth * 0.6) {
+    const s = nearShortcut(sc, x, z);
+    if (s.dist < sc.halfWidth + 3 && s.dist < near.dist) {
+      const N = route.path.pts.length;
+      let span = sc.b - sc.a; if (span < 0) span += N;
+      return { i: (sc.a + Math.round(span * s.f)) % N, dist: s.dist * (route.roadHalfWidth / sc.halfWidth), onShortcut: true };
+    }
+  }
+  return { ...near, onShortcut: false };
+}

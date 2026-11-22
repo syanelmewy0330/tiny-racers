@@ -28,6 +28,8 @@ export interface WorldMessage {
   raceId: number;
   /** Quick race (public matchmaking) instead of a private code room. */
   isPublic: boolean;
+  /** Which track the next (or current) race is on. */
+  track: string;
   /** Seconds until a Quick race starts by itself, or null. */
   autoStartIn: number | null;
   players: PlayerView[];

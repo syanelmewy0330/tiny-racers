@@ -3,13 +3,20 @@ import type { TrackDef } from '@shared/tracks/meadowLoop';
 import { MEADOW_LOOP } from '@shared/tracks/meadowLoop';
 import { FROSTBITE_PASS } from '@shared/tracks/frostbitePass';
 
-/**
- * Which track this page drives, and the colours of its world.
- * Test only: add ?track=frostbite to the address to practise on Frostbite Pass.
- * Online races still use Meadow Loop until track picking is built.
- */
-const wanted = new URLSearchParams(location.search).get('track');
-export const TRACK: TrackDef = wanted === 'frostbite' ? FROSTBITE_PASS : MEADOW_LOOP;
+/** Every track you can pick, in picker order. */
+export const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS];
+export const trackById = (id: unknown): TrackDef => TRACKS.find((t) => t.id === id) ?? MEADOW_LOOP;
+
+const KEY = 'tr-track';
+/** The track picked last time for practice (remembered in the browser). ?track=frostbite still works for testing. */
+export function savedTrack(): TrackDef {
+  const q = new URLSearchParams(location.search).get('track');
+  if (q === 'frostbite') return FROSTBITE_PASS;
+  let id: string | null = null;
+  try { id = localStorage.getItem(KEY); } catch { /* private mode */ }
+  return trackById(id);
+}
+export function saveTrack(id: string) { try { localStorage.setItem(KEY, id); } catch { /* private mode */ } }
 
 export interface Theme {
   haze: number; sunDir: THREE.Vector3; sunColor: number; sunPower: number;
@@ -43,5 +50,18 @@ const FROST: Theme = {
   exposure: 1.0,
 };
 
-export const THEME: Theme = TRACK.theme === 'frost' ? FROST : MEADOW;
-export const IS_FROST = TRACK.theme === 'frost';
+/** The colours in use right now. Changed in place by `useTrack`, so everything reads the current track's look. */
+export const THEME: Theme = { ...MEADOW, sunDir: MEADOW.sunDir.clone() };
+export const SUN_DIR = new THREE.Vector3().copy(MEADOW.sunDir);
+export const HAZE = new THREE.Color(MEADOW.haze);
+/** The track being driven right now. */
+export let TRACK: TrackDef = MEADOW_LOOP;
+export const isFrost = () => TRACK.theme === 'frost';
+
+/** Switch the current track and its colours. Builders called after this use the new look. */
+export function useTrack(def: TrackDef) {
+  TRACK = def;
+  const t = def.theme === 'frost' ? FROST : MEADOW;
+  Object.assign(THEME, t, { sunDir: t.sunDir.clone() });
+  SUN_DIR.copy(t.sunDir); HAZE.set(t.haze);
+}

@@ -3,7 +3,7 @@
  * One shared instance: `sfx`. Browsers only allow sound after the first click or key press,
  * so the audio starts itself then.
  */
-type Shot = 'drift' | 'boostMini' | 'boostBig' | 'wall' | 'kart' | 'beep' | 'go' | 'lap' | 'finalLap' | 'win' | 'finish' | 'hover' | 'select' | 'back' | 'ready';
+type Shot = 'drift' | 'boostMini' | 'boostBig' | 'wall' | 'kart' | 'beep' | 'go' | 'lap' | 'finalLap' | 'win' | 'finish' | 'hover' | 'select' | 'back' | 'ready' | 'ice';
 
 const VOL_KEY = 'tr-volume', MUTE_KEY = 'tr-muted';
 const LEVELS = [1, 0.75, 0.5, 0.25];
@@ -23,6 +23,8 @@ class Sfx {
   private noiseBuf!: AudioBuffer;
   private engine: Engine | null = null;
   private squeal: Squeal | null = null;
+  /** Glassy hiss of tyres sliding on ice (Frostbite Pass). */
+  private glide: Squeal | null = null;
   volume = load(VOL_KEY, 0.75, (s) => Math.min(1, Math.max(0, Number(s) || 0)));
   muted = load(MUTE_KEY, false, (s) => s === '1');
   private lastHover = 0;
@@ -136,6 +138,8 @@ class Sfx {
       case 'hover': this.tone({ f: 2200, dur: 0.03, a: 0.002, peak: 0.06 }); break;
       case 'select': this.tone({ type: 'triangle', f: N(81), dur: 0.08, a: 0.002, peak: 0.2 }); this.tone({ type: 'triangle', f: N(88), t: 0.05, dur: 0.12, peak: 0.16 }); break;
       case 'back': this.tone({ type: 'triangle', f: N(81), dur: 0.08, a: 0.002, peak: 0.18 }); this.tone({ type: 'triangle', f: N(74), t: 0.05, dur: 0.12, peak: 0.15 }); break;
+      // hitting ice: a frosty crackle and two glassy pings
+      case 'ice': this.noise({ dur: 0.18, peak: 0.12, f: 6500, f2: 3000, q: 3 }); this.tone({ f: N(100), dur: 0.25, peak: 0.05 }); this.tone({ f: N(107), t: 0.05, dur: 0.35, peak: 0.04 }); break;
       case 'ready': this.tone({ type: 'triangle', f: N(79), dur: 0.1, peak: 0.2 }); this.tone({ type: 'triangle', f: N(86), t: 0.08, dur: 0.25, peak: 0.2 }); this.noise({ t: 0.08, dur: 0.2, peak: 0.05, f: 6000, q: 2 }); break;
     }
   }
@@ -145,11 +149,12 @@ class Sfx {
    * Called every frame during a race. `speed` 0..1 of top speed, `drift` 0 = none, 1..3 = drifting with
    * sparks level 0..2. `on` false silences both (title screen, frozen pause).
    */
-  drive(on: boolean, speed: number, throttle: boolean, drift: number) {
+  drive(on: boolean, speed: number, throttle: boolean, drift: number, ice = false) {
     if (!this.live) return;
     const c = this.ctx!, t = c.currentTime;
     if (on && !this.engine) this.engine = this.makeEngine();
     if (on && !this.squeal) this.squeal = this.makeSqueal();
+    if (on && ice && !this.glide) this.glide = this.makeGlide();
     if (this.engine) {
       const e = this.engine, v = on ? Math.min(1.2, Math.max(0, speed)) : 0, f = 48 + v * 120 + (throttle ? 6 : 0);
       e.o1.frequency.setTargetAtTime(f, t, 0.08); e.o2.frequency.setTargetAtTime(f * 1.5, t, 0.08); e.sub.frequency.setTargetAtTime(f / 2, t, 0.08);
@@ -161,6 +166,22 @@ class Sfx {
       s.g.gain.setTargetAtTime(on && drift > 0 ? 0.13 : 0, t, 0.04);
       s.bq.frequency.setTargetAtTime(1800 + Math.max(0, level) * 650, t, 0.1);
     }
+    if (this.glide) {
+      const v = Math.min(1, Math.max(0, speed));
+      this.glide.g.gain.setTargetAtTime(on && ice ? 0.025 + v * 0.09 : 0, t, ice ? 0.05 : 0.12);
+      this.glide.bq.frequency.setTargetAtTime(4200 + v * 2600, t, 0.1);
+    }
+  }
+  private makeGlide(): Squeal {
+    const c = this.ctx!;
+    const src = c.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+    const bq = c.createBiquadFilter(); bq.type = 'bandpass'; bq.Q.value = 2.2; bq.frequency.value = 4500;
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+    // a slow shimmer so it sounds like skating, not wind
+    const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 5.5; lg.gain.value = 900; lfo.connect(lg).connect(bq.frequency);
+    const g = c.createGain(); g.gain.value = 0;
+    src.connect(hp).connect(bq).connect(g).connect(this.master); src.start(); lfo.start();
+    return { g, bq };
   }
 
   private makeEngine(): Engine {

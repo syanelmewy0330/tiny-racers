@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
-import { THEME, IS_FROST } from './theme';
+import { THEME, isFrost } from './theme';
 
 /**
  * Jump ramps and hay bale stacks (obstacles batch 1).
@@ -14,8 +14,6 @@ import { THEME, IS_FROST } from './theme';
 
 // Design board v3.0 colours
 const CHARCOAL = 0x1c1f26, WARM_GRAY = 0x3a3f47, ORANGE = 0xff8a00, YELLOW = 0xfcc945;
-/** Petals on Meadow Loop, snow on Frostbite Pass. */
-const BLOSSOM = THEME.decor;
 
 /** Ramp size in metres: length along the road, width across it, height of the lip. */
 const RAMP_L = 8, RAMP_W = 5.2, RAMP_H = 1.5;
@@ -34,6 +32,7 @@ export class Obstacles {
   private hay: Hay[] = [];
   private straws: Straw[] = [];
   private airborne = false;
+  private bodies: RAPIER.RigidBody[] = [];
   /** Called when you fly off a ramp, and when you bump a hay stack. */
   onLaunch?: () => void;
   /** `turn`: how far (radians) to swing the kart's heading towards the open road. */
@@ -55,6 +54,7 @@ export class Obstacles {
       const w = RAMP_W / 2, l = RAMP_L / 2;
       const hull = new Float32Array([-w, 0, -l, w, 0, -l, -w, 0, l, w, 0, l, -w, RAMP_H, l, w, RAMP_H, l]);
       world.createCollider(RAPIER.ColliderDesc.convexHull(hull)!.setFriction(0).setRestitution(0), body);
+      this.bodies.push(body);
       this.ramps.push({ ...at, onDeck: false });
     }
 
@@ -63,16 +63,17 @@ export class Obstacles {
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const h of track.def.hayBales) {
       const at = place(h.t, h.side, half - HAY_HX + 0.3);
-      const group = IS_FROST ? snowPile(rnd) : hayStack(hayTex, rnd);
+      const group = isFrost() ? snowPile(rnd) : hayStack(hayTex, rnd);
       group.position.set(at.x, 0, at.z); group.rotation.y = at.yaw;
       this.group.add(group);
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(at.x, HAY_H / 2, at.z).setRotation(yawQuat(at.yaw)));
       world.createCollider(RAPIER.ColliderDesc.cuboid(HAY_HX, HAY_H / 2, HAY_HZ).setFriction(0).setRestitution(0.45), body);
+      this.bodies.push(body);
       this.hay.push({ ...at, group, wobble: 0, cool: 0, side: h.side });
     }
 
     // a small pool of straw bits for when you bump a stack
-    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: IS_FROST ? 0xf4f8ff : 0xe8c66a, roughness: 1 });
+    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0xf4f8ff : 0xe8c66a, roughness: 1 });
     for (let k = 0; k < 40; k++) {
       const m = new THREE.Mesh(strawGeo, strawMat); m.visible = false; this.group.add(m);
       this.straws.push({ m, vx: 0, vy: 0, vz: 0, life: 0 });
@@ -112,6 +113,13 @@ export class Obstacles {
         this.onHay?.(THREE.MathUtils.clamp(d, -0.5, 0.5));
       }
     }
+  }
+
+  /** Remove ramps and stacks from the physics world (when switching tracks). */
+  dispose(world: RAPIER.World) {
+    for (const b of this.bodies) world.removeRigidBody(b);
+    this.bodies = [];
+    this.group.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); });
   }
 
   /** True while the kart is off the ground (for tilting the model). */
@@ -195,7 +203,7 @@ function rampModel(at: Placed, deckTex: THREE.Texture, roadSide: number): THREE.
   lip.position.set(0, h + 0.03, l - 0.15); g.add(lip);
 
   // cherry blossom cushions at the outside foot of the ramp
-  const petalMat = BLOSSOM.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
+  const petalMat = THEME.decor.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
   for (let k = 0; k < 9; k++) {
     const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28 + (k % 3) * 0.08, 0), petalMat[k % 3]);
     b.position.set(roadSide * (w + 0.4 + (k % 2) * 0.3), 0.2, -l + 1 + k * 0.75); b.castShadow = true; g.add(b);
@@ -241,7 +249,7 @@ function hayStack(tex: THREE.Texture, rnd: () => number): THREE.Group {
   }
   // fallen petals resting on top
   const petalGeo = new THREE.CircleGeometry(0.09, 5);
-  const petalMats = BLOSSOM.map((c) => new THREE.MeshStandardMaterial({ color: c, side: THREE.DoubleSide, roughness: 0.8 }));
+  const petalMats = THEME.decor.map((c) => new THREE.MeshStandardMaterial({ color: c, side: THREE.DoubleSide, roughness: 0.8 }));
   for (let k = 0; k < 26; k++) {
     const top = k < 12;
     const p = new THREE.Mesh(petalGeo, petalMats[k % 3]);

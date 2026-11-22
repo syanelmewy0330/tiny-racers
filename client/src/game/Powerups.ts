@@ -100,6 +100,18 @@ export class Powerups {
     scene.add(this.boxMesh, this.peelGroup);
   }
 
+  /** A different track: new item boxes along its road. */
+  setTrack(path: TrackPath, roadHalfWidth: number) {
+    this.path = path;
+    this.local = new ItemWorld(path, roadHalfWidth);
+    this.boxes = this.local.boxes;
+    const old = this.boxMesh, parent = old.parent;
+    this.boxMesh = new THREE.InstancedMesh(old.geometry, old.material, this.boxes.length);
+    this.boxMesh.castShadow = true; this.boxMesh.frustumCulled = false;
+    parent?.remove(old); parent?.add(this.boxMesh);
+    this.start(null);
+  }
+
   private now() { return performance.now(); }
 
   /** A new race: everything back in place, nothing held. */

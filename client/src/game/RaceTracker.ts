@@ -1,5 +1,5 @@
 import { LAPS, COUNTDOWN_SECONDS } from '@shared/constants';
-import { indexDelta, nearest, type TrackPath } from '@shared/trackMath';
+import { indexDelta, locate, type Route } from '@shared/trackMath';
 import type { RacePhase } from '@shared/types';
 
 /**
@@ -18,7 +18,11 @@ export class RaceTracker {
   onLap?: (lap: number) => void;
   onFinish?: () => void;
 
-  constructor(private path: TrackPath) {}
+  constructor(private route: Route) {}
+
+  /** A different track (between races). */
+  setRoute(route: Route) { this.route = route; this.index = 0; this.progress = 0; }
+  private get path() { return this.route.path; }
 
   get lap() { return Math.min(LAPS, Math.max(1, Math.floor(this.progress / this.path.pts.length) + 1)); }
 
@@ -28,7 +32,7 @@ export class RaceTracker {
   }
 
   update(dt: number, x: number, z: number): { distFromCentre: number } {
-    const near = nearest(this.path, x, z, this.index);
+    const near = locate(this.route, x, z, this.index);
     if (this.phase === 'countdown') {
       this.countdown -= dt;
       if (this.countdown <= 0) this.phase = 'racing';

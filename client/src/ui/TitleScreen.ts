@@ -1,6 +1,8 @@
 import { ColyseusSession, defaultServerUrl } from '../net/ColyseusSession';
 import { SERVERS, serverForCode, measurePing, type RaceServer } from '../net/servers';
 import { characterCards, savedCharacter, saveCharacter } from './CharacterPicker';
+import { trackCards } from './TrackPicker';
+import { savedTrack, saveTrack } from '../game/theme';
 
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } },
@@ -8,16 +10,19 @@ const store = {
 };
 
 /** First screen: practice alone, or create / join an online room. */
-export function showTitle(parent: HTMLElement, h: { onPractice: (character: string) => void; onRoom: (s: ColyseusSession) => void }, message = '') {
+export function showTitle(parent: HTMLElement, h: { onPractice: (character: string, track: string) => void; onRoom: (s: ColyseusSession) => void }, message = '') {
   const screen = document.createElement('div');
   screen.className = 'screen';
   screen.innerHTML = `
     <div class="panel" style="width:min(860px,100%)">
       <h1 class="logo">Tiny Racers</h1>
-      <p class="sub">Meadow Loop · 3 laps</p>
+      <p class="sub">3 laps · up to 8 racers</p>
       <p class="error" data-msg ${message ? '' : 'hidden'}></p>
       <h2>Choose your racer</h2>
       <div data-picker></div>
+      <h2>Choose your track</h2>
+      <div data-tracks></div>
+      <p class="sub" style="font-weight:600">For online races, the host picks the track in the room.</p>
       <div class="row" style="justify-content:flex-start"><button class="btn ghost" data-practice>Practice alone</button></div>
       <h2>Race online</h2>
       <div class="servers" role="radiogroup" aria-label="Race server">
@@ -57,6 +62,8 @@ export function showTitle(parent: HTMLElement, h: { onPractice: (character: stri
   name.value = store.get('tr-name'); server.value = store.get('tr-server') || defaultServerUrl();
   let character = savedCharacter();
   q<HTMLElement>('[data-picker]').replaceWith(characterCards(character, (id) => { character = id; saveCharacter(id); }));
+  let track = savedTrack().id;
+  q<HTMLElement>('[data-tracks]').replaceWith(trackCards(track, (id) => { track = id; saveTrack(id); }).el);
   const say = (t: string) => { msg.hidden = !t; msg.textContent = t; };
   // server switch: remembered choice, otherwise whichever answers fastest
   let chosen: RaceServer['id'] | '' = (store.get('tr-region') as RaceServer['id']) || '';
@@ -100,11 +107,11 @@ export function showTitle(parent: HTMLElement, h: { onPractice: (character: stri
     }
   }
 
-  q<HTMLButtonElement>('[data-practice]').onclick = () => { close(); h.onPractice(character); };
+  q<HTMLButtonElement>('[data-practice]').onclick = () => { close(); h.onPractice(character, track); };
   q<HTMLButtonElement>('[data-create]').onclick = () => connect('create');
   q<HTMLButtonElement>('[data-quick]').onclick = () => connect('quick');
   q<HTMLButtonElement>('[data-join]').onclick = () => connect('join');
   code.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect('join'); });
-  const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' && document.activeElement === document.body) { close(); h.onPractice(character); } };
+  const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' && document.activeElement === document.body) { close(); h.onPractice(character, track); } };
   window.addEventListener('keydown', onKey);
 }
