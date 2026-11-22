@@ -3,9 +3,10 @@ import type { TrackDef } from '@shared/tracks/meadowLoop';
 import { MEADOW_LOOP } from '@shared/tracks/meadowLoop';
 import { FROSTBITE_PASS } from '@shared/tracks/frostbitePass';
 import { LANTERN_GROVE } from '@shared/tracks/lanternGrove';
+import { NEON_HARBOR } from '@shared/tracks/neonHarbor';
 
 /** Every track you can pick, in picker order. */
-export const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS, LANTERN_GROVE];
+export const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS, LANTERN_GROVE, NEON_HARBOR];
 export const trackById = (id: unknown): TrackDef => TRACKS.find((t) => t.id === id) ?? MEADOW_LOOP;
 
 const KEY = 'tr-track';
@@ -14,6 +15,7 @@ export function savedTrack(): TrackDef {
   const q = new URLSearchParams(location.search).get('track');
   if (q === 'frostbite') return FROSTBITE_PASS;
   if (q === 'grove') return LANTERN_GROVE;
+  if (q === 'harbor') return NEON_HARBOR;
   let id: string | null = null;
   try { id = localStorage.getItem(KEY); } catch { /* private mode */ }
   return trackById(id);
@@ -29,6 +31,10 @@ export interface Theme {
   /** little decorations on ramps and obstacles (petals, or snow) */
   decor: number[];
   exposure: number;
+  /** Road surface finish (wet roads are shinier). */
+  roadRough?: number; roadMetal?: number;
+  /** Raised road colours: deck, glowing trim, pillars. */
+  bridge?: { deck: number; trim: number; pillar: number };
 }
 
 const MEADOW: Theme = {
@@ -63,6 +69,19 @@ const GROVE: Theme = {
   exposure: 1.05,
 };
 
+/** Rainy night at the docks: deep purple-blue sky, neon Lavender / Red / Sky Blue, wet shiny asphalt. */
+const HARBOR: Theme = {
+  haze: 0x1d1a33, sunDir: new THREE.Vector3(-0.45, 0.5, -0.74).normalize(), sunColor: 0xa9b6ff, sunPower: 0.9,
+  hemiSky: 0x8a7fe0, hemiGround: 0x2a2233, hemiPower: 0.95, fogNear: 90, fogFar: 520,
+  skyTop: [0.02, 0.02, 0.06], skyMid: [0.09, 0.07, 0.2], sunGlow: [0.75, 0.32, 0.55],
+  mountainRock: [0x14121f, 0x191626], mountainSnow: [0x1b1830, 0x201c36], snowLine: 0.9,
+  ground: 0x24252d, shoulder: 0x2e3038, curb: [0xc9ccd4, 0x8f84d9], road: [0x2b2d36, 0x2e3039], walls: [0xc9ccd4, 0xe54b4b],
+  decor: [0x6ca9e6, 0x8f84d9, 0xe54b4b],
+  exposure: 1.1,
+  roadRough: 0.45, roadMetal: 0.2,
+  bridge: { deck: 0x3a3f47, trim: 0x8f84d9, pillar: 0x4a505c },
+};
+
 /** The colours in use right now. Changed in place by `useTrack`, so everything reads the current track's look. */
 export const THEME: Theme = { ...MEADOW, sunDir: MEADOW.sunDir.clone() };
 export const SUN_DIR = new THREE.Vector3().copy(MEADOW.sunDir);
@@ -71,11 +90,12 @@ export const HAZE = new THREE.Color(MEADOW.haze);
 export let TRACK: TrackDef = MEADOW_LOOP;
 export const isFrost = () => TRACK.theme === 'frost';
 export const isGrove = () => TRACK.theme === 'grove';
+export const isHarbor = () => TRACK.theme === 'harbor';
 
 /** Switch the current track and its colours. Builders called after this use the new look. */
 export function useTrack(def: TrackDef) {
   TRACK = def;
-  const t = def.theme === 'frost' ? FROST : def.theme === 'grove' ? GROVE : MEADOW;
-  Object.assign(THEME, t, { sunDir: t.sunDir.clone() });
+  const t = def.theme === 'frost' ? FROST : def.theme === 'grove' ? GROVE : def.theme === 'harbor' ? HARBOR : MEADOW;
+  Object.assign(THEME, { roadRough: undefined, roadMetal: undefined, bridge: undefined }, t, { sunDir: t.sunDir.clone() });
   SUN_DIR.copy(t.sunDir); HAZE.set(t.haze);
 }

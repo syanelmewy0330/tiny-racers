@@ -160,8 +160,9 @@ export class KartController {
     this.vx = v.x; this.vz = v.z;
   }
 
-  placeAt(x: number, z: number, yaw: number) {
-    this.body.setTranslation({ x, y: 0.9, z }, true);
+  /** Put the kart at (x, z) facing yaw; `ground` is the road height there (raised roads). */
+  placeAt(x: number, z: number, yaw: number, ground = 0) {
+    this.body.setTranslation({ x, y: ground + 0.9, z }, true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.yaw = yaw; this.vx = this.vz = 0;
     this.boostTime = 0; this.driftDir = 0; this.driftCharge = 0; this.spinTime = 0;

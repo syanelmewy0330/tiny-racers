@@ -5,6 +5,7 @@ export * from './trackMath';
 export * from './tracks/meadowLoop';
 export * from './tracks/frostbitePass';
 export * from './tracks/lanternGrove';
+export * from './tracks/neonHarbor';
 export * from './protocol';
 export * from './karts';
 export * from './items';

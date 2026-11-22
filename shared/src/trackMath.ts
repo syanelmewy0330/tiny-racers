@@ -5,7 +5,7 @@
 import type { TrackDef } from './tracks/meadowLoop';
 
 export interface TrackPath {
-  pts: { x: number; z: number }[];   // evenly spaced centre-line samples
+  pts: { x: number; z: number; y: number }[];   // evenly spaced centre-line samples (y = road height)
   spacing: number;
   length: number;
 }
@@ -24,15 +24,29 @@ export function buildPath(track: TrackDef, spacing = 1): TrackPath {
       raw.push({ x: catmull(a[0], b[0], c[0], d[0], t), z: catmull(a[1], b[1], c[1], d[1], t) });
     }
   }
-  const pts: { x: number; z: number }[] = [];
+  const pts: { x: number; z: number; y: number }[] = [];
   let carry = 0, length = 0;
   for (let i = 0; i < raw.length; i++) {
     const a = raw[i], b = raw[(i + 1) % raw.length];
     const d = Math.hypot(b.x - a.x, b.z - a.z);
     length += d;
     let t = carry;
-    while (t < d) { pts.push({ x: a.x + (b.x - a.x) * (t / d), z: a.z + (b.z - a.z) * (t / d) }); t += spacing; }
+    while (t < d) { pts.push({ x: a.x + (b.x - a.x) * (t / d), z: a.z + (b.z - a.z) * (t / d), y: 0 }); t += spacing; }
     carry = t - d;
+  }
+  // road height: ease between the keyframes (smoothstep), wrapping round the lap
+  const E = track.elevation;
+  if (E?.length) {
+    const n = pts.length;
+    pts.forEach((p, k) => {
+      const t = k / n;
+      let j = E.findIndex(([et]) => et > t);
+      if (j < 0) j = E.length;
+      const [t0, h0] = E[(j - 1 + E.length) % E.length], [t1, h1] = E[j % E.length];
+      const span = ((t1 - t0) % 1 + 1) % 1 || 1, f = (((t - t0) % 1 + 1) % 1) / span;
+      const sm = f * f * (3 - 2 * f);
+      p.y = h0 + (h1 - h0) * sm;
+    });
   }
   return { pts, spacing, length };
 }

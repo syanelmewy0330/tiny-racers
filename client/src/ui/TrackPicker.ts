@@ -7,6 +7,7 @@ const LOOKS: Record<string, { bg: string; line: string; tag: string }> = {
   'meadow-loop': { bg: 'linear-gradient(160deg,#7fbf6a,#3f7f4f)', line: '#FCC945', tag: 'Golden afternoon' },
   'frostbite-pass': { bg: 'linear-gradient(160deg,#5b6aa8,#25305a)', line: '#CFE6FF', tag: 'Snow & ice' },
   'lantern-grove': { bg: 'linear-gradient(160deg,#2f4a3c,#141b30)', line: '#FCC945', tag: 'Moonlit forest' },
+  'neon-harbor': { bg: 'linear-gradient(160deg,#3a2f6b,#15132a)', line: '#8F84D9', tag: 'Rainy neon night' },
 };
 
 /** Small top-down outline of a track, as an SVG string. */

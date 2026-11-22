@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { nearest, nearShortcut, yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
-import { THEME, isFrost, isGrove, SUN_DIR, HAZE } from './theme';
+import { THEME, isFrost, isGrove, isHarbor, SUN_DIR, HAZE } from './theme';
+import { harborScenery } from './harborScenery';
 import { groveScenery } from './groveScenery';
 import { frostScenery, type Snowfall } from './frostScenery';
 
@@ -42,6 +43,7 @@ export class Environment {
     this.root.add(startArch(track));
     if (isFrost()) { this.snow = frostScenery(this.root, track, rnd, clear); return; }
     if (isGrove()) { this.snow = groveScenery(this.root, track, rnd, clear); return; }
+    if (isHarbor()) { this.snow = harborScenery(this.root, track, rnd, clear); return; }
 
     // Trees (instanced: cheap to draw hundreds)
     const trunkGeo = new THREE.CylinderGeometry(0.35, 0.5, 2.4, 8);
@@ -142,11 +144,11 @@ function mushroom(x: number, z: number, s: number): THREE.Group {
 function startArch(track: Track): THREE.Group {
   const g = new THREE.Group();
   const p = track.path.pts[0], yaw = yawAt(track.path, 0), w = track.wallOffset + 1;
-  const postMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0x3a3f47 : isGrove() ? 0x5c3d28 : 0xf05b65 });
+  const postMat = new THREE.MeshStandardMaterial({ color: isFrost() || isHarbor() ? 0x3a3f47 : isGrove() ? 0x5c3d28 : 0xf05b65 });
   for (const sx of [-1, 1]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 9, 12), postMat);
     post.position.set(sx * w, 4.5, 0); post.castShadow = true; g.add(post);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial(isFrost() || isGrove() ? { color: isGrove() ? 0xffd28a : 0xff8a00, emissive: isGrove() ? 0xff9a3c : 0xff8a00, emissiveIntensity: isGrove() ? 2.4 : 1.6 } : { color: 0xe5a94b }));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial(isHarbor() ? { color: 0x8f84d9, emissive: 0x8f84d9, emissiveIntensity: 2.6 } : isFrost() || isGrove() ? { color: isGrove() ? 0xffd28a : 0xff8a00, emissive: isGrove() ? 0xff9a3c : 0xff8a00, emissiveIntensity: isGrove() ? 2.4 : 1.6 } : { color: 0xe5a94b }));
     ball.position.set(sx * w, 9.4, 0); g.add(ball);
   }
   const c = document.createElement('canvas'); c.width = 1024; c.height = 160;

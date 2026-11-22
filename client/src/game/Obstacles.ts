@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
-import { THEME, isFrost, isGrove } from './theme';
+import { THEME, isFrost, isGrove, isHarbor } from './theme';
 
 /**
  * Jump ramps and hay bale stacks (obstacles batch 1).
@@ -32,6 +32,8 @@ export class Obstacles {
   private hay: Hay[] = [];
   private straws: Straw[] = [];
   private airborne = false;
+  /** Road height under the kart (set by the game each step; raised roads). */
+  ground = 0;
   private bodies: RAPIER.RigidBody[] = [];
   /** Called when you fly off a ramp, and when you bump a hay stack. */
   onLaunch?: () => void;
@@ -63,7 +65,7 @@ export class Obstacles {
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const h of track.def.hayBales) {
       const at = place(h.t, h.side, half - HAY_HX + 0.3);
-      const group = isFrost() ? snowPile(rnd) : isGrove() ? logPile(rnd) : hayStack(hayTex, rnd);
+      const group = isFrost() ? snowPile(rnd) : isGrove() ? logPile(rnd) : isHarbor() ? cratePile(rnd) : hayStack(hayTex, rnd);
       group.position.set(at.x, 0, at.z); group.rotation.y = at.yaw;
       this.group.add(group);
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(at.x, HAY_H / 2, at.z).setRotation(yawQuat(at.yaw)));
@@ -73,7 +75,7 @@ export class Obstacles {
     }
 
     // a small pool of straw bits for when you bump a stack
-    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0xf4f8ff : isGrove() ? 0x8a5f3c : 0xe8c66a, roughness: 1 });
+    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0xf4f8ff : isGrove() ? 0x8a5f3c : isHarbor() ? 0xc9a06a : 0xe8c66a, roughness: 1 });
     for (let k = 0; k < 40; k++) {
       const m = new THREE.Mesh(strawGeo, strawMat); m.visible = false; this.group.add(m);
       this.straws.push({ m, vx: 0, vy: 0, vz: 0, life: 0 });
@@ -97,7 +99,7 @@ export class Obstacles {
       }
       r.onDeck = on;
     }
-    this.airborne = p.y > KART_R + 0.25;
+    this.airborne = p.y > this.ground + KART_R + 0.25;
 
     for (const h of this.hay) {
       h.cool = Math.max(0, h.cool - dt);
@@ -278,6 +280,39 @@ function logPile(rnd: () => number): THREE.Group {
   const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), new THREE.MeshStandardMaterial({ color: 0xffd28a, emissive: 0xff9a3c, emissiveIntensity: 2.6 }));
   lamp.position.set(0.9, 2.15, 0); lamp.scale.y = 1.2; g.add(lamp);
   return g;
+}
+
+/** Neon Harbor's version of a hay stack: wooden cargo crates on a pallet, with a hazard light. */
+function cratePile(rnd: () => number): THREE.Group {
+  const g = new THREE.Group();
+  const tex = crateTexture();
+  const wood = [0xd2a56c, 0xb98a55].map((c) => new THREE.MeshStandardMaterial({ color: c, map: tex, roughness: 0.85 }));
+  const pallet = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.25, 2.8), new THREE.MeshStandardMaterial({ color: 0x6b4a31, roughness: 0.9 }));
+  pallet.position.y = 0.12; pallet.receiveShadow = true; g.add(pallet);
+  const boxes: [number, number, number, number][] = [[-1.1, 0.25, 0, 1.25], [1.1, 0.25, 0, 1.25], [0, 1.5, 0.05, 1.1]];
+  boxes.forEach(([x, y, z, s], k) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(2 * s * 0.9, 1.25 * s * 0.98, 2.4), wood[k % 2]);
+    b.position.set(x + (rnd() - 0.5) * 0.1, y + (1.25 * s * 0.98) / 2, z); b.rotation.y = (rnd() - 0.5) * 0.12;
+    b.castShadow = true; b.receiveShadow = true; g.add(b);
+  });
+  // a blinking-orange hazard lamp on top and a striped band so you see it in the rain
+  const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.35, 10), new THREE.MeshStandardMaterial({ color: ORANGE, emissive: ORANGE, emissiveIntensity: 2.6 }));
+  lamp.position.set(0.5, 2.95, 0); g.add(lamp);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(4.45, 0.18, 2.85), new THREE.MeshStandardMaterial({ color: YELLOW, emissive: YELLOW, emissiveIntensity: 0.5 }));
+  band.position.y = 0.3; g.add(band);
+  return g;
+}
+
+function crateTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 128, 128);
+  for (let y = 0; y < 128; y += 21) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(0, y, 128, 2); }
+  g.fillStyle = 'rgba(70,45,25,0.55)'; g.fillRect(0, 0, 128, 10); g.fillRect(0, 118, 128, 10); g.fillRect(0, 0, 10, 128); g.fillRect(118, 0, 10, 128);
+  g.save(); g.translate(64, 64); g.rotate(Math.atan2(108, 108)); g.fillRect(-76, -5, 152, 10); g.restore();
+  g.fillStyle = 'rgba(28,31,38,0.7)'; g.font = 'bold 20px sans-serif'; g.textAlign = 'center'; g.fillText('FRAGILE', 64, 36);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 /** Frostbite Pass's version of a hay stack: a lumpy snow pile with an orange marker pole. */

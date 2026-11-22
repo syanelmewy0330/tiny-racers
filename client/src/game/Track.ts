@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { buildPath, buildRoute, nearest, nearShortcut, yawAt, type Route, type TrackPath } from '@shared/trackMath';
 import type { TrackDef } from '@shared/tracks/meadowLoop';
-import { THEME } from './theme';
+import { THEME, isHarbor } from './theme';
 
-export interface BoostPad { index: number; x: number; z: number; yaw: number; mesh: THREE.Mesh }
+export interface BoostPad { index: number; x: number; y: number; z: number; yaw: number; mesh: THREE.Mesh }
 
 /** Builds the track's 3D meshes and its invisible physics walls from a shared TrackDef. */
 export class Track {
@@ -36,6 +36,7 @@ export class Track {
     this.icePatches();
     this.mudPatches();
     if (this.route.shortcut) this.group.add(this.shortcutSurface());
+    if (this.path.pts.some((p) => p.y > 0.02)) this.group.add(this.raised(world));
 
     // Boost pads (design board v3.0): charcoal steel frame, glowing racing-orange chevrons.
     this.padTexture = this.makePadTexture();
@@ -58,9 +59,9 @@ export class Track {
         const end = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.1, 0.3), frameMat);
         end.position.set(0, 0.1, sz * 3.95); pad.add(end);
       }
-      pad.position.set(p.x, 0, p.z); pad.rotation.y = yaw;
+      pad.position.set(p.x, p.y, p.z); pad.rotation.order = 'YXZ'; pad.rotation.y = yaw; pad.rotation.x = -this.pitch(index);
       this.group.add(pad);
-      this.pads.push({ index, x: p.x, z: p.z, yaw, mesh });
+      this.pads.push({ index, x: p.x, y: p.y, z: p.z, yaw, mesh });
     }
   }
 
@@ -126,7 +127,7 @@ export class Track {
       const e = Math.min(k, n - k) / n, shrink = e < 0.18 ? (0.18 - e) * 2.6 * (hi - lo) * 0.5 : 0;
       const wob = Math.sin(k * 0.9) * 0.35;
       const l = lo + shrink + wob, h = hi - shrink + wob * 0.6;
-      pos.push(c.x + s.x * h, 0.075, c.z + s.z * h, c.x + s.x * l, 0.075, c.z + s.z * l);
+      pos.push(c.x + s.x * h, 0.075 + c.y, c.z + s.z * h, c.x + s.x * l, 0.075 + c.y, c.z + s.z * l);
       uv.push(0, k / 6, (h - l) / 6, k / 6);
       if (k < n) { const q = k * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
     }
@@ -143,8 +144,11 @@ export class Track {
   private icePatches() {
     const N = this.path.pts.length, half = this.def.roadHalfWidth;
     if (!this.def.icePatches?.length) return;
-    const tex = iceTexture();
-    const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xbfe2ff, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.95, emissive: 0x8ccfff, emissiveIntensity: 0.55, emissiveMap: tex });
+    const tex = isHarbor() ? puddleTexture() : iceTexture();
+    // Neon Harbor: the same slide, but it is a rain puddle shining with the city's neon
+    const mat = isHarbor()
+      ? new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.03, metalness: 0.6, transparent: true, opacity: 0.92, emissive: 0xffffff, emissiveIntensity: 0.7, emissiveMap: tex })
+      : new THREE.MeshStandardMaterial({ map: tex, color: 0xbfe2ff, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.95, emissive: 0x8ccfff, emissiveIntensity: 0.55, emissiveMap: tex });
     for (const p of this.def.icePatches) {
       const a = Math.floor(p.t * N) % N, n = Math.round(p.len / this.path.spacing);
       this.ice.push({ a, b: a + n, side: p.side });
@@ -158,7 +162,7 @@ export class Track {
         const e = Math.min(k, n - k) / n, shrink = e < 0.18 ? (0.18 - e) * 2.6 * (hi - lo) * 0.5 : 0;
         const wob = Math.sin(k * 0.9) * 0.35;
         const l = lo + shrink + wob, h = hi - shrink + wob * 0.6;
-        pos.push(c.x + s.x * h, 0.075, c.z + s.z * h, c.x + s.x * l, 0.075, c.z + s.z * l);
+        pos.push(c.x + s.x * h, 0.075 + c.y, c.z + s.z * h, c.x + s.x * l, 0.075 + c.y, c.z + s.z * l);
         uv.push(0, k / 6, (h - l) / 6, k / 6);
         if (k < n) { const q = k * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
       }
@@ -177,12 +181,21 @@ export class Track {
     return { x: Math.cos(yaw), z: -Math.sin(yaw) };
   }
 
+  /** Uphill angle of the road at sample i (radians, positive = climbing in the driving direction). */
+  pitch(i: number): number {
+    const pts = this.path.pts, N = pts.length;
+    return Math.atan((pts[(i + 1) % N].y - pts[(i - 1 + N) % N].y) / (2 * this.path.spacing));
+  }
+
+  /** Road height at sample i (0 on flat tracks). */
+  heightAt(i: number): number { return this.path.pts[i].y; }
+
   private ribbon(half: number, y: number, color: (i: number) => THREE.Color): THREE.Mesh {
     const pts = this.path.pts, N = pts.length;
     const pos: number[] = [], col: number[] = [], idx: number[] = [];
     for (let i = 0; i <= N; i++) {
       const k = i % N, p = pts[k], s = this.side(k), c = color(i);
-      pos.push(p.x + s.x * half, y, p.z + s.z * half, p.x - s.x * half, y, p.z - s.z * half);
+      pos.push(p.x + s.x * half, y + p.y, p.z + s.z * half, p.x - s.x * half, y + p.y, p.z - s.z * half);
       col.push(c.r, c.g, c.b, c.r, c.g, c.b);
       if (i < N) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
     }
@@ -190,7 +203,7 @@ export class Track {
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.setIndex(idx); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: y > 0.05 ? THEME.roadRough ?? 0.9 : 0.9, metalness: y > 0.05 ? THEME.roadMetal ?? 0 : 0 }));
     m.receiveShadow = true;
     return m;
   }
@@ -201,7 +214,7 @@ export class Track {
     const o = new THREE.Object3D();
     for (let k = 0; k < count; k++) {
       const i = k * 6, p = this.path.pts[i];
-      o.position.set(p.x, 0.07, p.z); o.rotation.set(-Math.PI / 2, 0, 0); o.rotation.order = 'YXZ'; o.rotation.y = yawAt(this.path, i);
+      o.position.set(p.x, 0.07 + p.y, p.z); o.rotation.order = 'YXZ'; o.rotation.set(-Math.PI / 2 - this.pitch(i), yawAt(this.path, i), 0);
       o.updateMatrix(); mesh.setMatrixAt(k, o.matrix);
     }
     return mesh;
@@ -231,17 +244,19 @@ export class Track {
     const cap = Math.ceil(N / step) * 2 + (sc ? sc.pts.length * 2 : 0);
     const meshes = [new THREE.InstancedMesh(geo, mats[0], cap), new THREE.InstancedMesh(geo, mats[1], cap)];
     const counts = [0, 0];
-    const o = new THREE.Object3D(), q = new THREE.Quaternion();
-    const wall = (ax: number, az: number, bx: number, bz: number, k: number) => {
-      const len = Math.hypot(bx - ax, bz - az) + 0.3, yaw = Math.atan2(bx - ax, bz - az);
-      const cx = (ax + bx) / 2, cz = (az + bz) / 2;
-      // physics: thin tall box
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(cx, H / 2, cz).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }));
+    const o = new THREE.Object3D(), q = new THREE.Quaternion(), e = new THREE.Euler(0, 0, 0, 'YXZ');
+    o.rotation.order = 'YZX';
+    const wall = (ax: number, az: number, bx: number, bz: number, k: number, ay = 0, by = 0) => {
+      const flat = Math.hypot(bx - ax, bz - az), yaw = Math.atan2(bx - ax, bz - az), rise = Math.atan2(by - ay, flat);
+      const len = Math.hypot(flat, by - ay) + 0.3;
+      const cx = (ax + bx) / 2, cy = (ay + by) / 2, cz = (az + bz) / 2;
+      // physics: thin tall box (tilted along the slope on raised roads)
+      q.setFromEuler(e.set(-rise, yaw, 0));
+      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(cx, cy + H / 2, cz).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }));
       world.createCollider(RAPIER.ColliderDesc.cuboid(0.3, 1.5, len / 2).setFriction(0).setRestitution(0.2), body);
       this.bodies.push(body);
       // visuals
-      o.position.set(cx, H / 2, cz); o.rotation.set(0, yaw + Math.PI / 2, 0); o.scale.set(len, 1, 1); o.updateMatrix();
+      o.position.set(cx, cy + H / 2, cz); o.rotation.set(0, yaw + Math.PI / 2, -rise); o.scale.set(len, 1, 1); o.updateMatrix();
       const m = k % 2; meshes[m].setMatrixAt(counts[m]++, o.matrix);
     };
     for (const sign of [1, -1]) {
@@ -251,7 +266,7 @@ export class Track {
         const bx = pts[j].x + sj.x * this.wallOffset * sign, bz = pts[j].z + sj.z * this.wallOffset * sign;
         // gap where the shortcut leaves or rejoins the road
         if (sc && nearShortcut(sc, (ax + bx) / 2, (az + bz) / 2).dist < sc.halfWidth + 1.2) continue;
-        wall(ax, az, bx, bz, k);
+        wall(ax, az, bx, bz, k, pts[i].y, pts[j].y);
       }
     }
     if (sc) {
@@ -269,6 +284,81 @@ export class Track {
     }
     meshes.forEach((m, i) => { m.count = counts[i]; m.castShadow = true; m.receiveShadow = true; group.add(m); });
     return group;
+  }
+
+  /**
+   * Raised road (a bridge): a solid surface karts drive up onto, plus the deck's underside,
+   * side skirts with a neon trim, and pillars down to the ground (none on the road below).
+   */
+  private raised(world: RAPIER.World): THREE.Group {
+    const g = new THREE.Group(), pts = this.path.pts, N = pts.length, W = this.wallOffset + 0.4, T = 0.8;
+    const up = (i: number) => pts[i].y > 0.01;
+    // the stretch of samples that is raised, padded a little so the foot is flush with the ground
+    const on: number[] = [];
+    for (let i = 0; i < N; i++) if (up(i) || up((i + 2) % N) || up((i - 2 + N) % N)) on.push(i);
+    // physics: one triangle strip the width of the road between the walls
+    const v: number[] = [], ix: number[] = [];
+    let prev = -2, base = 0;
+    for (const i of on) {
+      const p = pts[i], s = this.side(i);
+      const vi = v.length / 3;
+      v.push(p.x + s.x * W, p.y, p.z + s.z * W, p.x - s.x * W, p.y, p.z - s.z * W);
+      if (i === prev + 1) ix.push(base, base + 1, vi, base + 1, vi + 1, vi);
+      prev = i; base = vi;
+    }
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    world.createCollider(RAPIER.ColliderDesc.trimesh(new Float32Array(v), new Uint32Array(ix)).setFriction(0), body);
+    this.bodies.push(body);
+
+    // visuals: underside and skirts only where it is well off the ground
+    const deck = new THREE.MeshStandardMaterial({ color: THEME.bridge?.deck ?? 0x3a3f47, roughness: 0.8, side: THREE.DoubleSide });
+    const trim = new THREE.MeshStandardMaterial({ color: THEME.bridge?.trim ?? 0x8f84d9, emissive: THEME.bridge?.trim ?? 0x8f84d9, emissiveIntensity: 2.2 });
+    const under: number[] = [], ui: number[] = [], skirt: number[] = [], si: number[] = [];
+    prev = -2;
+    for (const i of on) {
+      const p = pts[i], s = this.side(i), y = Math.max(0, p.y - T);
+      const u = under.length / 3;
+      under.push(p.x + s.x * W, y, p.z + s.z * W, p.x - s.x * W, y, p.z - s.z * W);
+      const k = skirt.length / 3;
+      for (const sd of [1, -1]) skirt.push(p.x + s.x * W * sd, p.y + 0.06, p.z + s.z * W * sd, p.x + s.x * W * sd, y, p.z + s.z * W * sd);
+      if (i === prev + 1) {
+        ui.push(u - 2, u, u - 1, u - 1, u, u + 1);
+        for (const o of [0, 2]) si.push(k - 4 + o, k - 3 + o, k + o, k - 3 + o, k + 1 + o, k + o);
+      }
+      prev = i;
+    }
+    const mesh = (pos: number[], idx: number[], m: THREE.Material) => {
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      const me = new THREE.Mesh(geo, m); me.castShadow = true; me.receiveShadow = true; g.add(me); return me;
+    };
+    mesh(under, ui, deck); mesh(skirt, si, deck);
+    // a glowing trim line along both skirts
+    for (const sd of [1, -1]) {
+      const tp: number[] = [], ti: number[] = []; prev = -2;
+      for (const i of on) {
+        const p = pts[i], s = this.side(i), x = p.x + s.x * (W + 0.03) * sd, z = p.z + s.z * (W + 0.03) * sd;
+        const t = tp.length / 3; tp.push(x, p.y - 0.12, z, x, p.y - 0.32, z);
+        if (i === prev + 1) ti.push(t - 2, t - 1, t, t - 1, t + 1, t);
+        prev = i;
+      }
+      const tm = mesh(tp, ti, trim); tm.castShadow = false;
+      (tm.material as THREE.Material).side = THREE.DoubleSide;
+    }
+    // pillars: pairs every 12 m, never standing in a road below
+    const low = pts.filter((p) => p.y < 0.3);
+    const pillarMat = new THREE.MeshStandardMaterial({ color: THEME.bridge?.pillar ?? 0x4a505c, roughness: 0.7 });
+    for (let n = 0; n < on.length; n += 12) {
+      const i = on[n], p = pts[i]; if (p.y < 2.2) continue;
+      const s = this.side(i);
+      for (const sd of [1, -1]) {
+        const x = p.x + s.x * (W - 1.2) * sd, z = p.z + s.z * (W - 1.2) * sd;
+        if (low.some((q) => Math.hypot(q.x - x, q.z - z) < this.wallOffset + 1.2)) continue;
+        const h = p.y - T;
+        const col = new THREE.Mesh(new THREE.BoxGeometry(1.1, h, 1.1), pillarMat);
+        col.position.set(x, h / 2, z); col.rotation.y = yawAt(this.path, i); col.castShadow = col.receiveShadow = true; g.add(col);
+      }
+    }
+    return g;
   }
 
   /** The shortcut: a frozen pond with an icy lane across it. */
@@ -342,6 +432,23 @@ function iceTexture(): THREE.CanvasTexture {
   // sky-blue glints
   g.strokeStyle = 'rgba(108,169,230,0.55)'; g.lineWidth = 2;
   for (let k = 0; k < 5; k++) { const x = r() * 256, y = r() * 256; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 30, y + 12); g.stroke(); }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
+/** A dark rain puddle with ripple rings and smeared neon colour. */
+function puddleTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#121427'; g.fillRect(0, 0, 256, 256);
+  let seed = 31; const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  // smeared neon reflections running along the road
+  const cols = ['rgba(143,132,217,0.55)', 'rgba(229,75,75,0.45)', 'rgba(108,169,230,0.5)', 'rgba(255,138,0,0.35)'];
+  for (let k = 0; k < 10; k++) { g.fillStyle = cols[k % 4]; g.fillRect(r() * 240, 0, 4 + r() * 14, 256); }
+  // ripple rings from raindrops
+  g.strokeStyle = 'rgba(220,226,255,0.55)'; g.lineWidth = 1.5;
+  for (let k = 0; k < 26; k++) { const x = r() * 256, y = r() * 256, rad = 3 + r() * 12; g.beginPath(); g.ellipse(x, y, rad, rad * 0.7, 0, 0, Math.PI * 2); g.stroke(); }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;

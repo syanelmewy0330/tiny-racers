@@ -5,7 +5,7 @@ import { characterById } from '@shared/characters';
 import type { PlayerView } from '@shared/protocol';
 import { THEME, useTrack, savedTrack, trackById } from './theme';
 import type { TrackDef } from '@shared/tracks/meadowLoop';
-import { yawAt, nearest } from '@shared/trackMath';
+import { yawAt, nearest, locate } from '@shared/trackMath';
 import { Input } from './Input';
 import { Track } from './Track';
 import { Environment } from './Environment';
@@ -239,7 +239,7 @@ export class Game {
       itemUsed: (d) => this.items.onUsed(d, s.me),
       itemHit: (d) => this.items.onHit(d, s.me),
       go: () => { this.race.phase = 'racing'; this.race.countdown = 0; },
-      correct: (d) => this.kart.placeAt(d.x, d.z, d.yaw),
+      correct: (d) => this.kart.placeAt(d.x, d.z, d.yaw, this.track.path.pts[locate(this.track.route, d.x, d.z, this.race.index).i].y),
       finish: (d) => {
         if (d.id !== s.me) return;
         this.race.phase = 'finished';
@@ -286,14 +286,14 @@ export class Game {
   private placeOnGrid(slot: number) {
     const N = this.track.path.pts.length, back = 12 + Math.floor(slot / 2) * 6, i = (N - back) % N, p = this.track.path.pts[i];
     const side = this.track.side(i), off = (slot % 2 ? -1 : 1) * 2.8;
-    this.kart.placeAt(p.x + side.x * off, p.z + side.z * off, yawAt(this.track.path, i));
+    this.kart.placeAt(p.x + side.x * off, p.z + side.z * off, yawAt(this.track.path, i), p.y);
     this.race.reset(i, -back);
   }
 
   /** R key, or falling off the world: put the kart back on the road where it is. */
   private respawn() {
     const i = this.race.index, p = this.track.path.pts[i];
-    this.kart.placeAt(p.x, p.z, yawAt(this.track.path, i));
+    this.kart.placeAt(p.x, p.z, yawAt(this.track.path, i), p.y);
     this.rig.snap();
     this.hud.say('Reset!', 0.8);
   }
@@ -319,7 +319,7 @@ export class Game {
     for (const pad of this.track.pads) {
       const dx = p.x - pad.x, dz = p.z - pad.z;
       const along = dx * Math.sin(pad.yaw) + dz * Math.cos(pad.yaw), side = dx * Math.cos(pad.yaw) - dz * Math.sin(pad.yaw);
-      if (Math.abs(along) < 4 && Math.abs(side) < 3.2 && this.kart.boostTime < 0.5) this.kart.boost(1.1, 'pad');
+      if (Math.abs(along) < 4 && Math.abs(side) < 3.2 && Math.abs(p.y - KART_RADIUS - pad.y) < 2 && this.kart.boostTime < 0.5) this.kart.boost(1.1, 'pad');
     }
 
     const locked = this.mode !== 'race' || this.race.phase !== 'racing';
@@ -343,6 +343,7 @@ export class Game {
     this.prevPos = { x: was.x, y: was.y, z: was.z }; this.prevYaw = this.kart.yaw;
     const before = Math.hypot(this.kart.vx, this.kart.vz);
     this.world.step();
+    this.obstacles.ground = this.track.heightAt(this.race.index);
     this.obstacles.step(this.kart.body, this.kart.yaw, STEP);
     this.kart.syncFromPhysics();
     this.bumpCheck(before);
@@ -454,7 +455,8 @@ export class Game {
     this.obstacles.frame(dt);
     // nose up while rising off a ramp, nose down as you come back to earth
     const vy = this.kart.body.linvel().y;
-    this.model.tilt += ((this.obstacles.inAir ? THREE.MathUtils.clamp(-vy * 0.035, -0.35, 0.3) : 0) - this.model.tilt) * Math.min(1, dt * 8);
+    const sloped = this.track.heightAt(this.race.index) > 0.05;   // on a bridge ramp the nose follows the road
+    this.model.tilt += ((this.obstacles.inAir || sloped ? THREE.MathUtils.clamp(-vy * 0.035, -0.35, 0.3) : 0) - this.model.tilt) * Math.min(1, dt * 8);
     this.look.render(dt, this.mode === 'race' && this.kart.boosting ? 1 : 0);
   }
 }

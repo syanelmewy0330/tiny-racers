@@ -11,7 +11,7 @@ export interface TrackDef {
   /** Hay bale stacks: where around the lap (0..1) and which edge of the road they sit on. */
   hayBales: { t: number; side: 1 | -1 }[];
   /** Look of the world around the road (scenery, sky, colours). Meadow if left out. */
-  theme?: 'meadow' | 'frost' | 'grove';
+  theme?: 'meadow' | 'frost' | 'grove' | 'harbor';
   /** Slippery ice on the road: where it starts (0..1), how long (metres), which half (+1 / -1, or 0 for the full width). */
   icePatches?: { t: number; len: number; side: 1 | -1 | 0 }[];
   /** Sticky mud on the road (same layout as ice patches): slows you down. */
@@ -24,6 +24,11 @@ export interface TrackDef {
    * as covering the road between from and to, so laps stay fair.
    */
   shortcut?: { from: number; to: number; via: [number, number][]; halfWidth: number };
+  /**
+   * Road height (metres) at points around the lap, as [t 0..1, height] pairs in order.
+   * Between them the road eases up and down smoothly. Leave out for a flat track.
+   */
+  elevation?: [number, number][];
   /** One line for the track picker. */
   blurb?: string;
 }
