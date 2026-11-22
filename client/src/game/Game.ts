@@ -148,7 +148,7 @@ export class Game {
     this.mode = 'race'; this.raceSerial++;
     this.hud.show(true); this.hud.hideResults(); this.hud.closePause();
     this.placeOnGrid(0);
-    this.wentGo = false;
+    this.wentGo = false; this.lastLapHeard = 1; this.lastBeep = 0;
     this.rig.snap();
     this.items.start(null);
     this.firstRaceHelp();
@@ -201,7 +201,7 @@ export class Game {
         this.model.setMood('race'); this.remotes.setMoods(null);
         this.race.countdown = d.countdown + 30;   // the server says GO, not our own timer
         this.countdownEndsAt = this.time + d.countdown;
-        this.wentGo = false; this.rig.snap();
+        this.wentGo = false; this.lastLapHeard = 1; this.lastBeep = 0; this.rig.snap();
         this.hud.closePause();
         this.items.start(s);
         this.firstRaceHelp();
@@ -390,7 +390,6 @@ export class Game {
       const me = this.online?.me;
       const lap = this.online && this.meView ? this.meView.lap : this.race.lap;
       const cd = counting ? (this.online ? Math.max(0.01, this.countdownEndsAt - this.time) : this.race.countdown) : null;
-      if (counting) this.lastLapHeard = 1;
       this.sounds(counting, cd, lap, frozen);
       this.hud.update(dt, {
         lap,
