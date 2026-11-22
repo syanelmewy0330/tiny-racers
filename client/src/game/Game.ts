@@ -19,6 +19,7 @@ import type { ColyseusSession } from '../net/ColyseusSession';
 import { RemoteKarts } from './RemoteKarts';
 import { Look } from './Look';
 import { Powerups, ITEM_ICONS } from './Powerups';
+import { Obstacles } from './Obstacles';
 import { ITEMS } from '@shared/items';
 import { LAPS } from '@shared/constants';
 import { sfx } from '../audio/Sfx';
@@ -64,6 +65,7 @@ export class Game {
   readonly hud: Hud;
   private look!: Look;
   private items: Powerups;
+  private obstacles: Obstacles;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -77,6 +79,8 @@ export class Game {
     this.track = new Track(MEADOW_LOOP, this.world);
     this.scene.add(this.track.group);
     this.env = new Environment(this.scene, this.world, this.track);
+    this.obstacles = new Obstacles(this.track, this.world);
+    this.scene.add(this.obstacles.group);
     this.look = new Look(this.renderer, this.scene, this.camera);
 
     const ch = characterById('bubbles');
@@ -101,6 +105,8 @@ export class Game {
 
     this.hud = new Hud(uiRoot);
     sfx.onChange = () => { this.hud.setPauseSound(); if (this.mode === 'race' && !this.hud.paused) this.hud.say(`Sound: ${sfx.label}`, 1); };
+    this.obstacles.onLaunch = () => { this.model.react(); this.hud.say('Big air!', 0.9); };
+    this.obstacles.onHay = (turn) => { this.kart.yaw += turn; this.model.react(); };
     this.hud.onRestart = () => this.startRace();
     this.hud.onMenu = () => this.toMenu();
     this.look.onAutoStep = (what) => {
@@ -301,6 +307,7 @@ export class Game {
     this.prevPos = { x: was.x, y: was.y, z: was.z }; this.prevYaw = this.kart.yaw;
     const before = Math.hypot(this.kart.vx, this.kart.vz);
     this.world.step();
+    this.obstacles.step(this.kart.body, this.kart.yaw, STEP);
     this.kart.syncFromPhysics();
     this.bumpCheck(before);
     if (this.kart.body.translation().y < -5) this.respawn();
@@ -403,6 +410,10 @@ export class Game {
       }
     }
     this.items.frame(dt, this.time);
+    this.obstacles.frame(dt);
+    // nose up while rising off a ramp, nose down as you come back to earth
+    const vy = this.kart.body.linvel().y;
+    this.model.tilt += ((this.obstacles.inAir ? THREE.MathUtils.clamp(-vy * 0.035, -0.35, 0.3) : 0) - this.model.tilt) * Math.min(1, dt * 8);
     this.look.render(dt, this.mode === 'race' && this.kart.boosting ? 1 : 0);
   }
 }

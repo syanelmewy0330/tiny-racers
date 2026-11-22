@@ -26,16 +26,29 @@ export class Track {
     this.group.add(this.startLine());
     this.group.add(this.walls(world));
 
-    // Boost pads with an animated chevron texture.
+    // Boost pads (design board v3.0): charcoal steel frame, glowing racing-orange chevrons.
     this.padTexture = this.makePadTexture();
+    const padMat = new THREE.MeshStandardMaterial({ map: this.padTexture, emissive: 0xffffff, emissiveIntensity: 1.1, emissiveMap: this.padTexture, roughness: 0.35, metalness: 0.2 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1c1f26, metalness: 0.6, roughness: 0.4 });
+    const stripMat = new THREE.MeshStandardMaterial({ color: 0xff8a00, emissive: 0xff8a00, emissiveIntensity: 2.4 });
     for (const t of def.boostPads) {
       const index = Math.floor(t * N) % N, p = this.path.pts[index], yaw = yawAt(this.path, index);
-      const mat = new THREE.MeshStandardMaterial({ map: this.padTexture, emissive: 0xffb703, emissiveIntensity: 0.6, emissiveMap: this.padTexture });
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(6, 8), mat);
-      mesh.rotation.order = 'YXZ'; mesh.rotation.y = yaw + Math.PI; mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(p.x, 0.08, p.z);
-      mesh.receiveShadow = true;
-      this.group.add(mesh);
+      const pad = new THREE.Group();
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 7.6), padMat);
+      mesh.rotation.set(-Math.PI / 2, 0, Math.PI); mesh.position.y = 0.09;   // texture's up = forward
+      mesh.receiveShadow = true; pad.add(mesh);
+      for (const sx of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 8), frameMat);
+        rail.position.set(sx * 3, 0.1, 0); rail.receiveShadow = true; pad.add(rail);
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 7.4), stripMat);
+        strip.position.set(sx * 2.86, 0.17, 0); pad.add(strip);
+      }
+      for (const sz of [-1, 1]) {
+        const end = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.1, 0.3), frameMat);
+        end.position.set(0, 0.1, sz * 3.95); pad.add(end);
+      }
+      pad.position.set(p.x, 0, p.z); pad.rotation.y = yaw;
+      this.group.add(pad);
       this.pads.push({ index, x: p.x, z: p.z, yaw, mesh });
     }
   }
@@ -121,9 +134,12 @@ export class Track {
   private makePadTexture(): THREE.CanvasTexture {
     const c = document.createElement('canvas'); c.width = 128; c.height = 128;
     const g = c.getContext('2d')!;
-    g.fillStyle = '#ffd166'; g.fillRect(0, 0, 128, 128);
-    g.fillStyle = '#ff4f79';
-    for (const y of [10, 74]) { g.beginPath(); g.moveTo(20, y + 44); g.lineTo(64, y); g.lineTo(108, y + 44); g.lineTo(90, y + 50); g.lineTo(64, y + 24); g.lineTo(38, y + 50); g.closePath(); g.fill(); }
+    g.fillStyle = '#1C1F26'; g.fillRect(0, 0, 128, 128);
+    // two chevrons per tile, pointing along the road; orange with a yellow leading edge
+    for (const y of [8, 72]) {
+      const chev = (dy: number, col: string) => { g.fillStyle = col; g.beginPath(); g.moveTo(18, y + dy + 46); g.lineTo(64, y + dy); g.lineTo(110, y + dy + 46); g.lineTo(92, y + dy + 52); g.lineTo(64, y + dy + 26); g.lineTo(36, y + dy + 52); g.closePath(); g.fill(); };
+      chev(0, '#FCC945'); chev(6, '#FF8A00');
+    }
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
     return t;
