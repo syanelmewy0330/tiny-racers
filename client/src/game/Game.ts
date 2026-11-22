@@ -20,6 +20,8 @@ import { RemoteKarts } from './RemoteKarts';
 import { Look } from './Look';
 import { Powerups, ITEM_ICONS } from './Powerups';
 import { ITEMS } from '@shared/items';
+import { LAPS } from '@shared/constants';
+import { sfx } from '../audio/Sfx';
 
 const STEP = 1 / PHYSICS_HZ;
 const KART_RADIUS = 0.75;
@@ -98,6 +100,7 @@ export class Game {
     this.items.hopRacer = (id) => this.remotes.model(id)?.hop();
 
     this.hud = new Hud(uiRoot);
+    sfx.onChange = () => { this.hud.setPauseSound(); if (this.mode === 'race' && !this.hud.paused) this.hud.say(`Sound: ${sfx.label}`, 1); };
     this.hud.onRestart = () => this.startRace();
     this.hud.onMenu = () => this.toMenu();
     this.look.onAutoStep = (what) => {
@@ -108,11 +111,12 @@ export class Game {
     // switching to another tab pauses a practice race
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.mode === 'race' && !this.online && !this.hud.paused) this.openPause(); });
     this.hud.setTrack(this.track.path.pts);
-    this.kart.onBoost = (k) => { this.model.react(); if (k !== 'item') this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!'); };
+    this.kart.onBoost = (k) => { this.model.react(); if (k === 'super' || k === 'pad') sfx.play('boostBig'); else if (k === 'mini') sfx.play('boostMini'); if (k !== 'item') this.hud.say(k === 'pad' ? 'Boost!' : k === 'mini' ? 'Mini turbo!' : 'Super turbo!'); };
     // new laps are announced by the HUD's lap banner
     this.race.onFinish = () => {
       if (this.online) return;
       this.model.setMood('win');   // racing alone, finishing is a win
+      sfx.play('win');
       this.hud.celebrate(null);
       const raceAt = this.raceSerial;
       setTimeout(() => { if (raceAt === this.raceSerial && !this.online) this.hud.showResults(this.race.raceTime, this.race.lapTimes); }, 2400);
@@ -158,6 +162,7 @@ export class Game {
       resume: () => this.hud.closePause(),
       restart: () => this.startRace(),
       graphics: () => { const q = this.look.toggle(); this.resize(); this.hud.setPauseGraphics(q); },
+      sound: () => sfx.cycleVolume(),
       leave: () => this.toMenu(),
     });
   }
@@ -206,6 +211,7 @@ export class Game {
         this.race.phase = 'finished';
         this.model.setMood(d.place === 1 ? 'win' : 'lose');
         this.hud.celebrate(d.place);
+        sfx.play(d.place === 1 ? 'win' : 'finish');
       },
       results: (rows) => {
         const mine = rows.find((r) => r.id === s.me);
@@ -293,9 +299,46 @@ export class Game {
     this.kart.applyInput(input, STEP, locked);
     const was = this.kart.body.translation();
     this.prevPos = { x: was.x, y: was.y, z: was.z }; this.prevYaw = this.kart.yaw;
+    const before = Math.hypot(this.kart.vx, this.kart.vz);
     this.world.step();
     this.kart.syncFromPhysics();
+    this.bumpCheck(before);
     if (this.kart.body.translation().y < -5) this.respawn();
+  }
+
+  /** A sudden loss of speed in one step means we hit a wall or another kart. */
+  private bumpCooldown = 0;
+  private bumpCheck(before: number) {
+    this.bumpCooldown = Math.max(0, this.bumpCooldown - STEP);
+    if (this.mode !== 'race' || this.bumpCooldown > 0 || this.kart.spinTime > 0) return;
+    const lost = before - Math.hypot(this.kart.vx, this.kart.vz);
+    if (lost < 3.5) return;
+    const p = this.kart.body.translation();
+    const nearKart = this.remotes.positions().some((r) => Math.hypot(r.x - p.x, r.z - p.z) < 2.6);
+    sfx.play(nearKart ? 'kart' : 'wall', lost / 14);
+    this.bumpCooldown = 0.25;
+  }
+
+  private lastBeep = 0;
+  private lastLapHeard = 1;
+  private lastSpark = 0;
+  /** Engine, drift, countdown and lap sounds, once per drawn frame. */
+  private sounds(counting: boolean, countdown: number | null, lap: number, frozen: boolean) {
+    const racing = this.mode === 'race';
+    const k = this.kart, top = 31;
+    const drift = k.driftDir !== 0 ? 1 + k.driftLevel : 0;
+    sfx.drive(racing && !frozen, Math.abs(k.forwardSpeed) / top, racing && !counting && this.input.read().throttle, drift);
+    if (!racing) return;
+    if (drift > 1 && k.driftLevel > this.lastSpark) sfx.play('drift');
+    this.lastSpark = drift ? k.driftLevel : 0;
+    if (counting && countdown !== null) {
+      const n = Math.ceil(countdown);
+      if (n <= 3 && n >= 1 && n !== this.lastBeep) { this.lastBeep = n; sfx.play('beep'); }
+    }
+    if (lap !== this.lastLapHeard) {
+      if (lap > this.lastLapHeard) sfx.play(lap >= LAPS ? 'finalLap' : 'lap');
+      this.lastLapHeard = lap;
+    }
   }
 
   private frame() {
@@ -328,20 +371,25 @@ export class Game {
     this.env.follow(target, this.time);
 
     if (this.mode === 'title') {
+      sfx.drive(false, 0, false, 0);
       const a = this.time * 0.25;
       this.camera.position.set(p.x + Math.sin(a) * 11, 4.5, p.z + Math.cos(a) * 11);
       this.camera.lookAt(p.x, 1.2, p.z);
     } else {
       this.rig.update(dt, target, yaw, speed);
       const counting = this.race.phase === 'countdown';
-      if (!counting && !this.wentGo) { this.wentGo = true; this.hud.flashGo(); }
+      if (!counting && !this.wentGo) { this.wentGo = true; this.hud.flashGo(); sfx.play('go'); this.lastBeep = 0; }
       const players = this.online?.latest?.players ?? null;
       const me = this.online?.me;
+      const lap = this.online && this.meView ? this.meView.lap : this.race.lap;
+      const cd = counting ? (this.online ? Math.max(0.01, this.countdownEndsAt - this.time) : this.race.countdown) : null;
+      if (counting) this.lastLapHeard = 1;
+      this.sounds(counting, cd, lap, frozen);
       this.hud.update(dt, {
-        lap: this.online && this.meView ? this.meView.lap : this.race.lap,
+        lap,
         time: this.race.raceTime, kmh: speed * 3.6,
         drift: this.kart.driftCharge, driftLevel: this.kart.driftLevel, boosting: this.kart.boosting,
-        countdown: counting ? (this.online ? Math.max(0.01, this.countdownEndsAt - this.time) : this.race.countdown) : null,
+        countdown: cd,
         place: this.online && this.meView && players ? { n: this.meView.place, of: players.length } : null,
         standings: players ? players.map((pl) => ({ id: pl.id, name: pl.name, character: pl.character, me: pl.id === me })) : null,
         dots: [...this.remotes.positions().map((r) => ({ ...r, me: false })), { x: p.x, z: p.z, character: this.model.ch.id, me: true }],
