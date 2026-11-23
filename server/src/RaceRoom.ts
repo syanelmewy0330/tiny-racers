@@ -13,6 +13,30 @@ import { ItemWorld } from '../../shared/src/items.ts';
 /** Tracks a room can race on. */
 const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS, LANTERN_GROVE, NEON_HARBOR];
 const ROUTES = new Map(TRACKS.map((t) => [t.id, buildRoute(t)]));
+
+/**
+ * Quick race track order. Plain random could repeat a track and leave another out for many races
+ * in a row, so we deal from a shuffled deck: every track is played once before the deck is reshuffled.
+ * The deck is shared by all Quick race rooms on this server, and never hands a room the track it just had.
+ */
+let quickDeck: TrackDef[] = [];
+let lastDealt: string | undefined;
+/** `currentId`: the room's current track (left out for a new room, which then avoids the last track dealt). */
+export function nextQuickTrack(currentId = lastDealt): TrackDef {
+  const shuffled = () => {
+    const d = [...TRACKS];
+    for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+    return d;
+  };
+  if (quickDeck.length === 0) quickDeck = shuffled();
+  // only the room's current track left: slide a fresh deck underneath so there is another card to take
+  if (quickDeck.length === 1 && quickDeck[0].id === currentId) quickDeck = [...shuffled(), ...quickDeck];
+  let i = quickDeck.length - 1;
+  if (quickDeck[i].id === currentId) i--;
+  const t = quickDeck.splice(i, 1)[0];
+  lastDealt = t.id;
+  return t;
+}
 const MAX_SPEED = 62;            // m/s; faster than any legal boost, so only cheats or glitches exceed it
 const FINISH_GRACE_MS = 30_000;  // after the winner finishes, others get this long
 const RECONNECT_SECONDS = 20;    // how long a dropped player's place is kept
@@ -62,12 +86,12 @@ export class RaceRoom extends Room {
     this.track = def; this.route = ROUTES.get(def.id)!;
     this.items = new ItemWorld(this.route.path, def.roadHalfWidth);
   }
-  /** Quick races: a random track each time. */
-  private randomTrack() { this.setTrack(TRACKS[Math.floor(Math.random() * TRACKS.length)]); }
+  /** Quick races: the next track from the shuffled deck (every track comes up before any repeats). */
+  private randomTrack(fresh = false) { this.setTrack(nextQuickTrack(fresh ? undefined : this.track.id)); }
 
   onCreate(options: { public?: boolean } = {}) {
     this.isPublic = !!options.public;
-    if (this.isPublic) this.randomTrack();
+    if (this.isPublic) this.randomTrack(true);
     // Codes made on the Europe server start with E, so the game knows where to join them.
     const pick = (letters: string) => letters[Math.floor(Math.random() * letters.length)];
     const first = REGION === 'eu' ? 'E' : pick(CODE_LETTERS.replace('E', ''));
