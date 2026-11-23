@@ -6,12 +6,13 @@ import { MEADOW_LOOP, type TrackDef } from '../../shared/src/tracks/meadowLoop.t
 import { FROSTBITE_PASS } from '../../shared/src/tracks/frostbitePass.ts';
 import { LANTERN_GROVE } from '../../shared/src/tracks/lanternGrove.ts';
 import { NEON_HARBOR } from '../../shared/src/tracks/neonHarbor.ts';
+import { DRAGON_RIDGE } from '../../shared/src/tracks/dragonRidge.ts';
 import type { KartSnapshot } from '../../shared/src/types.ts';
 import type { RoomPhase, WorldMessage, PlayerView, ResultRow, ItemGotMessage, ItemUsedMessage, ItemHitMessage } from '../../shared/src/protocol.ts';
 import { ItemWorld } from '../../shared/src/items.ts';
 
 /** Tracks a room can race on. */
-const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS, LANTERN_GROVE, NEON_HARBOR];
+const TRACKS: TrackDef[] = [MEADOW_LOOP, FROSTBITE_PASS, LANTERN_GROVE, NEON_HARBOR, DRAGON_RIDGE];
 const ROUTES = new Map(TRACKS.map((t) => [t.id, buildRoute(t)]));
 
 /**

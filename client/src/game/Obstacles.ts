@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
-import { THEME, isFrost, isGrove, isHarbor } from './theme';
+import { THEME, isFrost, isGrove, isHarbor, isWall } from './theme';
 
 /**
  * Jump ramps and hay bale stacks (obstacles batch 1).
@@ -21,10 +21,10 @@ const RAMP_L = 8, RAMP_W = 5.2, RAMP_H = 1.5;
 const HAY_HX = 2.3, HAY_HZ = 1.45, HAY_H = 2.2;
 const KART_R = 0.75;
 
-interface Placed { x: number; z: number; yaw: number }
+interface Placed { x: number; y: number; z: number; yaw: number }
 interface Ramp extends Placed { onDeck: boolean }
 interface Hay extends Placed { group: THREE.Group; wobble: number; cool: number; side: number }
-interface Straw { m: THREE.Mesh; vx: number; vy: number; vz: number; life: number }
+interface Straw { m: THREE.Mesh; vx: number; vy: number; vz: number; life: number; floor: number }
 
 export class Obstacles {
   readonly group = new THREE.Group();
@@ -44,7 +44,7 @@ export class Obstacles {
     const N = track.path.pts.length, half = track.def.roadHalfWidth;
     const place = (t: number, side: number, off: number): Placed => {
       const i = Math.floor(t * N) % N, p = track.path.pts[i], s = track.side(i);
-      return { x: p.x + s.x * off * side, z: p.z + s.z * off * side, yaw: yawAt(track.path, i) };
+      return { x: p.x + s.x * off * side, y: p.y, z: p.z + s.z * off * side, yaw: yawAt(track.path, i) };
     };
 
     const deckTex = rampTexture();
@@ -52,7 +52,7 @@ export class Obstacles {
       const at = place(r.t, r.side, half - RAMP_W / 2 - 0.4);
       this.group.add(rampModel(at, deckTex, r.side));
       // physics: a wedge the kart's ball slides up, so it really leaves the ground
-      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(at.x, 0, at.z).setRotation(yawQuat(at.yaw)));
+      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(at.x, at.y, at.z).setRotation(yawQuat(at.yaw)));
       const w = RAMP_W / 2, l = RAMP_L / 2;
       const hull = new Float32Array([-w, 0, -l, w, 0, -l, -w, 0, l, w, 0, l, -w, RAMP_H, l, w, RAMP_H, l]);
       world.createCollider(RAPIER.ColliderDesc.convexHull(hull)!.setFriction(0).setRestitution(0), body);
@@ -65,20 +65,20 @@ export class Obstacles {
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const h of track.def.hayBales) {
       const at = place(h.t, h.side, half - HAY_HX + 0.3);
-      const group = isFrost() ? snowPile(rnd) : isGrove() ? logPile(rnd) : isHarbor() ? cratePile(rnd) : hayStack(hayTex, rnd);
-      group.position.set(at.x, 0, at.z); group.rotation.y = at.yaw;
+      const group = isFrost() ? snowPile(rnd) : isGrove() ? logPile(rnd) : isHarbor() ? cratePile(rnd) : isWall() ? jarStack(rnd) : hayStack(hayTex, rnd);
+      group.position.set(at.x, at.y, at.z); group.rotation.y = at.yaw;
       this.group.add(group);
-      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(at.x, HAY_H / 2, at.z).setRotation(yawQuat(at.yaw)));
+      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(at.x, at.y + HAY_H / 2, at.z).setRotation(yawQuat(at.yaw)));
       world.createCollider(RAPIER.ColliderDesc.cuboid(HAY_HX, HAY_H / 2, HAY_HZ).setFriction(0).setRestitution(0.45), body);
       this.bodies.push(body);
       this.hay.push({ ...at, group, wobble: 0, cool: 0, side: h.side });
     }
 
     // a small pool of straw bits for when you bump a stack
-    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0xf4f8ff : isGrove() ? 0x8a5f3c : isHarbor() ? 0xc9a06a : 0xe8c66a, roughness: 1 });
+    const strawGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), strawMat = new THREE.MeshStandardMaterial({ color: isFrost() ? 0xf4f8ff : isGrove() ? 0x8a5f3c : isHarbor() ? 0xc9a06a : isWall() ? 0xc0603a : 0xe8c66a, roughness: 1 });
     for (let k = 0; k < 40; k++) {
       const m = new THREE.Mesh(strawGeo, strawMat); m.visible = false; this.group.add(m);
-      this.straws.push({ m, vx: 0, vy: 0, vz: 0, life: 0 });
+      this.straws.push({ m, vx: 0, vy: 0, vz: 0, life: 0, floor: 0.05 });
     }
   }
 
@@ -91,7 +91,7 @@ export class Obstacles {
     const fwd = v.x * Math.sin(yaw) + v.z * Math.cos(yaw);
     for (const r of this.ramps) {
       const { along, side } = local(r, p.x, p.z);
-      const on = Math.abs(side) < RAMP_W / 2 && along > -RAMP_L / 2 && along < RAMP_L / 2 && p.y > KART_R + 0.1;
+      const on = Math.abs(side) < RAMP_W / 2 && along > -RAMP_L / 2 && along < RAMP_L / 2 && p.y > r.y + KART_R + 0.1;
       // just left the lip going forward: extra lift so the jump feels like a jump at any speed
       if (r.onDeck && !on && along >= RAMP_L / 2 - 0.5 && fwd > 8) {
         body.setLinvel({ x: v.x, y: Math.max(v.y, 4 + fwd * 0.17), z: v.z }, true);
@@ -105,7 +105,7 @@ export class Obstacles {
       h.cool = Math.max(0, h.cool - dt);
       const { along, side } = local(h, p.x, p.z);
       const dx = Math.max(0, Math.abs(side) - HAY_HX), dz = Math.max(0, Math.abs(along) - HAY_HZ);
-      if (h.cool === 0 && Math.hypot(dx, dz) < KART_R + 0.15 && p.y < HAY_H + KART_R) {
+      if (h.cool === 0 && Math.hypot(dx, dz) < KART_R + 0.15 && p.y < h.y + HAY_H + KART_R && p.y > h.y - 1) {
         h.cool = 0.6; h.wobble = 1;
         // soft: keep some speed and get nudged back towards the open road, never a dead stop
         const vv = body.linvel(), px = -Math.cos(h.yaw) * h.side * 7, pz = Math.sin(h.yaw) * h.side * 7;
@@ -137,7 +137,7 @@ export class Obstacles {
     for (const s of this.straws) {
       if (s.life <= 0) continue;
       s.life -= dt; s.vy -= 9 * dt;
-      s.m.position.x += s.vx * dt; s.m.position.y = Math.max(0.05, s.m.position.y + s.vy * dt); s.m.position.z += s.vz * dt;
+      s.m.position.x += s.vx * dt; s.m.position.y = Math.max(s.floor, s.m.position.y + s.vy * dt); s.m.position.z += s.vz * dt;
       s.m.rotation.x += dt * 6; s.m.rotation.y += dt * 4;
       s.m.visible = s.life > 0;
     }
@@ -148,7 +148,7 @@ export class Obstacles {
     for (const s of this.straws) {
       if (s.life > 0) continue;
       const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 4;
-      s.m.position.set(x, y + 0.5, z); s.vx = Math.cos(a) * sp; s.vz = Math.sin(a) * sp; s.vy = 3 + Math.random() * 4;
+      s.floor = y - KART_R + 0.05; s.m.position.set(x, y + 0.5, z); s.vx = Math.cos(a) * sp; s.vz = Math.sin(a) * sp; s.vy = 3 + Math.random() * 4;
       s.life = 0.8 + Math.random() * 0.5; s.m.visible = true;
       if (++n >= 14) break;
     }
@@ -211,7 +211,7 @@ function rampModel(at: Placed, deckTex: THREE.Texture, roadSide: number): THREE.
     b.position.set(roadSide * (w + 0.4 + (k % 2) * 0.3), 0.2, -l + 1 + k * 0.75); b.castShadow = true; g.add(b);
   }
 
-  g.position.set(at.x, 0, at.z); g.rotation.y = at.yaw;
+  g.position.set(at.x, at.y, at.z); g.rotation.y = at.yaw;
   return g;
 }
 
@@ -300,6 +300,32 @@ function cratePile(rnd: () => number): THREE.Group {
   lamp.position.set(0.5, 2.95, 0); g.add(lamp);
   const band = new THREE.Mesh(new THREE.BoxGeometry(4.45, 0.18, 2.85), new THREE.MeshStandardMaterial({ color: YELLOW, emissive: YELLOW, emissiveIntensity: 0.5 }));
   band.position.y = 0.3; g.add(band);
+  return g;
+}
+
+/** Dragon Ridge's version of a hay stack: big clay jars on a wooden pallet, tied with red cloth. */
+function jarStack(rnd: () => number): THREE.Group {
+  const g = new THREE.Group();
+  const clay = [0xc0603a, 0xa9512f, 0xcf7448].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));
+  const pallet = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.25, 2.8), new THREE.MeshStandardMaterial({ color: 0x6b4a31, roughness: 0.9 }));
+  pallet.position.y = 0.12; pallet.receiveShadow = true; g.add(pallet);
+  // a jar: a lathe profile, round belly, narrow neck, lip
+  const prof = [[0.01, 0], [0.55, 0.05], [0.82, 0.45], [0.86, 0.85], [0.7, 1.25], [0.38, 1.5], [0.36, 1.62], [0.44, 1.7], [0.01, 1.7]].map(([x, y]) => new THREE.Vector2(x, y));
+  const jarGeo = new THREE.LatheGeometry(prof, 18);
+  const spots: [number, number, number, number][] = [[-1.3, 0.25, -0.5, 1], [0, 0.25, 0.35, 1.08], [1.3, 0.25, -0.4, 0.95], [-0.6, 0.25, 0.75, 0.8], [0.75, 1.95, 0, 0.72]];
+  spots.forEach(([x, y, z, s], k) => {
+    const j = new THREE.Mesh(jarGeo, clay[k % 3]);
+    j.position.set(x + (rnd() - 0.5) * 0.12, y, z); j.scale.setScalar(s); j.rotation.y = rnd() * 6;
+    j.castShadow = true; j.receiveShadow = true; g.add(j);
+    // a red cloth band round the neck
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * s, 0.5 * s, 0.16 * s, 14), new THREE.MeshStandardMaterial({ color: 0xe54b4b, roughness: 0.7 }));
+    band.position.set(j.position.x, y + 1.42 * s, j.position.z); g.add(band);
+  });
+  // a yellow warning flag on a pole so you see it from far off
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.4, 8), new THREE.MeshStandardMaterial({ color: 0x3a3f47 }));
+  pole.position.set(-1.9, 1.7, 0.9); g.add(pole);
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.95), new THREE.MeshStandardMaterial({ color: YELLOW, emissive: ORANGE, emissiveIntensity: 0.3 }));
+  flag.position.set(-1.9, 3.05, 0.45); g.add(flag);
   return g;
 }
 

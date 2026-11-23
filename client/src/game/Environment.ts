@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { nearest, nearShortcut, yawAt } from '@shared/trackMath';
 import type { Track } from './Track';
-import { THEME, isFrost, isGrove, isHarbor, SUN_DIR, HAZE } from './theme';
+import { THEME, isFrost, isGrove, isHarbor, isWall, SUN_DIR, HAZE } from './theme';
+import { wallScenery } from './wallScenery';
 import { harborScenery } from './harborScenery';
 import { groveScenery } from './groveScenery';
 import { frostScenery, type Snowfall } from './frostScenery';
@@ -32,18 +33,20 @@ export class Environment {
 
     // Ground: big grassy (or snowy) field, plus a physics floor under everything.
     const ground = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshStandardMaterial({ color: THEME.ground, roughness: 1 }));
-    ground.rotation.x = -Math.PI / 2; ground.position.set(90, 0, 45); ground.receiveShadow = true;
+    // on the mountain wall the valleys are far below: fall off and you drop out of the world (and get put back)
+    const floor = isWall() ? -40 : 0;
+    ground.rotation.x = -Math.PI / 2; ground.position.set(90, floor, 45); ground.receiveShadow = true;
     this.root.add(ground);
-    this.colliders.push(world.createCollider(RAPIER.ColliderDesc.cuboid(800, 1, 800).setTranslation(90, -1, 45).setFriction(0)));
+    this.colliders.push(world.createCollider(RAPIER.ColliderDesc.cuboid(800, 1, 800).setTranslation(90, floor - 1, 45).setFriction(0)));
 
     const rnd = mulberry(42);
-    const short = track.route.shortcut;
     const clear = (x: number, z: number, margin: number) => nearest(track.path, x, z).dist > track.wallOffset + margin
-      && (!short || nearShortcut(short, x, z).dist > short.halfWidth + 9 + margin);
+      && track.route.shortcuts.every((sc) => nearShortcut(sc, x, z).dist > sc.halfWidth + 9 + margin);
     this.root.add(startArch(track));
     if (isFrost()) { this.snow = frostScenery(this.root, track, rnd, clear); return; }
     if (isGrove()) { this.snow = groveScenery(this.root, track, rnd, clear); return; }
     if (isHarbor()) { this.snow = harborScenery(this.root, track, rnd, clear); return; }
+    if (isWall()) { this.snow = wallScenery(this.root, track, rnd); return; }
 
     // Trees (instanced: cheap to draw hundreds)
     const trunkGeo = new THREE.CylinderGeometry(0.35, 0.5, 2.4, 8);
@@ -143,12 +146,13 @@ function mushroom(x: number, z: number, s: number): THREE.Group {
 
 function startArch(track: Track): THREE.Group {
   const g = new THREE.Group();
-  const p = track.path.pts[0], yaw = yawAt(track.path, 0), w = track.wallOffset + 1;
-  const postMat = new THREE.MeshStandardMaterial({ color: isFrost() || isHarbor() ? 0x3a3f47 : isGrove() ? 0x5c3d28 : 0xf05b65 });
+  // on the stone wall the posts stand on the parapets
+  const p = track.path.pts[0], yaw = yawAt(track.path, 0), w = isWall() ? track.wallOffset : track.wallOffset + 1;
+  const postMat = new THREE.MeshStandardMaterial({ color: isWall() ? 0xe54b4b : isFrost() || isHarbor() ? 0x3a3f47 : isGrove() ? 0x5c3d28 : 0xf05b65 });
   for (const sx of [-1, 1]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 9, 12), postMat);
     post.position.set(sx * w, 4.5, 0); post.castShadow = true; g.add(post);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial(isHarbor() ? { color: 0x8f84d9, emissive: 0x8f84d9, emissiveIntensity: 2.6 } : isFrost() || isGrove() ? { color: isGrove() ? 0xffd28a : 0xff8a00, emissive: isGrove() ? 0xff9a3c : 0xff8a00, emissiveIntensity: isGrove() ? 2.4 : 1.6 } : { color: 0xe5a94b }));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial(isHarbor() ? { color: 0x8f84d9, emissive: 0x8f84d9, emissiveIntensity: 2.6 } : isFrost() || isGrove() || isWall() ? { color: isGrove() ? 0xffd28a : 0xff8a00, emissive: isGrove() ? 0xff9a3c : 0xff8a00, emissiveIntensity: isGrove() ? 2.4 : 1.6 } : { color: 0xe5a94b }));
     ball.position.set(sx * w, 9.4, 0); g.add(ball);
   }
   const c = document.createElement('canvas'); c.width = 1024; c.height = 160;
@@ -165,7 +169,7 @@ function startArch(track: Track): THREE.Group {
   document.fonts?.load(FONT).then(() => { paint(); tex.needsUpdate = true; }).catch(() => {});
   const banner = new THREE.Mesh(new THREE.BoxGeometry(w * 2, 2.6, 0.4), [postMat, postMat, postMat, postMat, new THREE.MeshStandardMaterial({ map: tex }), new THREE.MeshStandardMaterial({ map: tex })]);
   banner.position.set(0, 8, 0); banner.castShadow = true; g.add(banner);
-  g.position.set(p.x, 0, p.z);
+  g.position.set(p.x, p.y, p.z);
   // banner faces along the road; the box's wide side runs across the track
   g.rotation.y = yaw;
   return g;

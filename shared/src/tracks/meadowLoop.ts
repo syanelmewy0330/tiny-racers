@@ -1,3 +1,8 @@
+export interface ShortcutDef {
+  from: number; to: number; via: [number, number][]; halfWidth: number;
+  kind?: 'ice' | 'planks' | 'trail' | 'tunnel';
+}
+
 /** Meadow Loop: the first track. Points are the road's centre line (metres, x/z), driven in order. */
 export interface TrackDef {
   id: string;
@@ -11,7 +16,7 @@ export interface TrackDef {
   /** Hay bale stacks: where around the lap (0..1) and which edge of the road they sit on. */
   hayBales: { t: number; side: 1 | -1 }[];
   /** Look of the world around the road (scenery, sky, colours). Meadow if left out. */
-  theme?: 'meadow' | 'frost' | 'grove' | 'harbor';
+  theme?: 'meadow' | 'frost' | 'grove' | 'harbor' | 'wall';
   /** Slippery ice on the road: where it starts (0..1), how long (metres), which half (+1 / -1, or 0 for the full width). */
   icePatches?: { t: number; len: number; side: 1 | -1 | 0 }[];
   /** Sticky mud on the road (same layout as ice patches): slows you down. */
@@ -19,11 +24,15 @@ export interface TrackDef {
   /** A tunnel the road drives through, from..to around the lap (0..1). */
   tunnel?: { from: number; to: number };
   /**
-   * A shortcut off the main road: it leaves the centre line at `from` (0..1) and rejoins at `to`,
-   * passing through the `via` points (metres). `halfWidth` is half its width. Driving it counts
-   * as covering the road between from and to, so laps stay fair.
+   * Shortcuts off the main road. Each leaves the centre line at `from` (0..1) and rejoins at `to`,
+   * passing through the `via` points (metres). `halfWidth` is half its width. Driving one counts
+   * as covering the road between from and to, so laps stay fair. Its height runs evenly from the
+   * road's height at one end to the other. `kind` sets the surface: an icy pond lane (default),
+   * a narrow plank bridge, a dirt trail with a muddy middle, or a stone tunnel.
    */
-  shortcut?: { from: number; to: number; via: [number, number][]; halfWidth: number };
+  shortcuts?: ShortcutDef[];
+  /** Watchtowers the road drives through (stone wall tracks), around the lap (0..1). */
+  towers?: number[];
   /**
    * Road height (metres) at points around the lap, as [t 0..1, height] pairs in order.
    * Between them the road eases up and down smoothly. Leave out for a flat track.
