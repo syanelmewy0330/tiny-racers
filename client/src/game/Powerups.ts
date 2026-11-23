@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ItemWorld, ITEMS, BOX_REACH, HAZARD_REACH, ROLL_MS, SHIELD_MS, OWNER_GRACE_MS, ROCKET_LIFE_S, ROCKET_REACH, STAR_LIFE_S, STAR_REACH, STAR_GRACE_S, MAGNET_S, rocketAt, type Hazard, type ItemId, type ThunderHit } from '@shared/items';
+import { ItemWorld, ITEMS, BOX_REACH, HAZARD_REACH, ROLL_MS, SHIELD_MS, OWNER_GRACE_MS, ROCKET_LIFE_S, ROCKET_REACH, STAR_LIFE_S, STAR_REACH, STAR_GRACE_S, MAGNET_S, MAGNET_REACH, rocketAt, type Hazard, type ItemId, type ThunderHit } from '@shared/items';
 import type { TrackPath } from '@shared/trackMath';
 import type { WorldMessage, ItemGotMessage, ItemUsedMessage, ItemHitMessage } from '@shared/protocol';
 import type { ColyseusSession } from '../net/ColyseusSession';
@@ -33,7 +33,9 @@ export const ITEM_ICONS: Record<ItemId, string> = {
     <circle cx="84" cy="14" r="5" fill="#FF8A00"/><circle cx="14" cy="80" r="4" fill="#6CA9E6"/>`,
 };
 
-interface Box { x: number; z: number; id: number }
+interface Box { x: number; y: number; z: number; id: number }
+/** Seconds a Magnet takes to reel a box in. */
+const PULL_S = 0.45;
 
 /**
  * Power-ups in a race: item boxes on the road, the item you hold, Bubble Shields and
@@ -58,6 +60,11 @@ export class Powerups {
   private boltMat = new THREE.MeshBasicMaterial({ color: 0xffc83d });
   private boltCore = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
   private held: { item: ItemId; uses: number } | null = null;
+  /** Items the Magnet banked behind the slot (used one after another). */
+  private bank: ItemId[] = [];
+  private myMagnetUntil = 0;
+  /** Boxes a Magnet is reeling in: whose kart they fly to and when they set off. */
+  private flights = new Map<number, { who: string; t0: number }>();
   private rolling: { until: number; item: ItemId | null; since: number } | null = null;
   private myShieldUntil = 0;
   private remoteShields = new Set<string>();
@@ -71,9 +78,11 @@ export class Powerups {
   private pops: { m: THREE.Mesh; t: number }[] = [];
   private bubbleGeo = new THREE.SphereGeometry(1, 32, 20);
   private dummy = new THREE.Object3D();
+  private tmp = new THREE.Vector3();
+  private ringGeo = new THREE.RingGeometry(0.92, 1, 48);
 
   /** Hooks into the game: HUD slot and messages, the player's kart, remote models. */
-  onSlot?: (item: ItemId | null, uses: number, rollingIcon: ItemId | null) => void;
+  onSlot?: (item: ItemId | null, uses: number, rollingIcon: ItemId | null, bank: ItemId[]) => void;
   onSay?: (text: string) => void;
   onBoost?: () => void;
   onSpin?: () => void;
@@ -83,8 +92,7 @@ export class Powerups {
   /** Bounce Trap: hop the player's kart / a rival's model. */
   onBounce?: () => void;
   hopRacer?: (id: string) => void;
-  /** Batch 3: Magnet on the player, Mini Thunder shrinking the player / a rival, screen flash. */
-  onMagnet?: () => void;
+  /** Batch 3: Mini Thunder shrinking the player / a rival, screen flash. */
   onShrink?: () => void;
   shrinkRacer?: (id: string) => void;
   onFlash?: () => void;
@@ -121,6 +129,7 @@ export class Powerups {
     this.hidden.clear(); this.predictedHidden.clear(); this.hazards = []; this.hazardHit.clear(); this.hazardSeen.clear(); this.rocketChecked.clear(); this.starTouched.clear();
     for (const m of this.magnets.values()) m.o.removeFromParent(); this.magnets.clear();
     this.held = null; this.rolling = null; this.myShieldUntil = 0; this.remoteShields.clear();
+    this.bank = []; this.myMagnetUntil = 0; this.flights.clear();
     this.syncPeels();
     this.slot();
   }
@@ -138,6 +147,7 @@ export class Powerups {
     this.syncPeels();
   }
   onGot(d: ItemGotMessage) {
+    if (d.banked) { this.bank = (d.bank ?? []).slice(); this.onSay?.(`+ ${ITEMS[d.item].name}`); this.slot(); return; }
     if (this.rolling) this.rolling.item = d.item;
     else { this.held = { item: d.item, uses: d.uses }; this.slot(); }
     this.pendingUses = d.uses;
@@ -174,16 +184,18 @@ export class Powerups {
   /** `y` = ground height under the kart, so a peel on the bridge can't hit you on the road below. */
   step(me: string, x: number, z: number, place: number, of: number, y = 0) {
     const now = this.now();
-    // item boxes
+    // item boxes: drive through them, or a Magnet reels in every box near you
+    const magnet = this.myMagnetUntil > now;
     for (const b of this.boxes) {
-      if (this.isHidden(b.id, now) || Math.hypot(x - b.x, z - b.z) > BOX_REACH) continue;
-      if (this.online) {
-        this.predictedHidden.set(b.id, now + 1500);
-        if (!this.held && !this.rolling) { this.rolling = { until: now + ROLL_MS, item: null, since: now }; this.online.pickBox(b.id); }
-      } else {
-        const item = this.local.pick(me, b.id, now, x, z, place, of);
-        if (item) this.rolling = { until: now + ROLL_MS, item, since: now };
+      if (this.isHidden(b.id, now) || Math.abs(b.y - y) > 4) continue;
+      const fl = this.flights.get(b.id);
+      if (fl) {
+        if (fl.who === 'me' && now - fl.t0 >= PULL_S * 1000) { this.flights.delete(b.id); this.grab(me, b, now, x, z, place, of, y, true); }
+        continue;
       }
+      const d = Math.hypot(x - b.x, z - b.z);
+      if (d <= BOX_REACH) this.grab(me, b, now, x, z, place, of, y, magnet);
+      else if (magnet && d <= MAGNET_REACH) this.flights.set(b.id, { who: 'me', t0: now });
     }
     // banana peels, bounce traps and rockets
     for (const h of this.hazards) {
@@ -216,6 +228,22 @@ export class Powerups {
     for (const h of this.hazards) if (!this.hazardSeen.has(h.id)) this.hazardSeen.set(h.id, now);
   }
 
+  /** Break a box and roll an item (or bank one while the Magnet is on). */
+  private grab(me: string, b: Box, now: number, x: number, z: number, place: number, of: number, y: number, magnet: boolean) {
+    if (this.online) {
+      this.predictedHidden.set(b.id, now + 1500);
+      const free = !this.held && !this.rolling;
+      if (free) this.rolling = { until: now + ROLL_MS, item: null, since: now };
+      if (free || magnet) this.online.pickBox(b.id);
+      return;
+    }
+    const before = this.local.bank(me).length;
+    const item = this.local.pick(me, b.id, now, x, z, place, of, y);
+    if (!item) return;
+    if (this.local.bank(me).length > before) { this.bank = this.local.bank(me); this.onSay?.(`+ ${ITEMS[item].name}`); this.slot(); }
+    else this.rolling = { until: now + ROLL_MS, item, since: now };
+  }
+
   private hitMe(blocked: boolean, kind: Hazard['kind'], h: Hazard) {
     if (kind === 'rocket') { const r = rocketAt(this.path, h, (this.now() - (this.hazardSeen.get(h.id) ?? this.now())) / 1000); this.burst(r.x, r.y + 1, r.z); }
     if (blocked) { this.myShieldUntil = 0; this.popBubble('me'); this.onSay?.('Shield saved you!'); return; }
@@ -231,12 +259,12 @@ export class Powerups {
     if (this.online) {
       this.online.useItem();
       this.held.uses -= 1;
-      if (this.held.uses <= 0) this.held = null;
+      if (this.held.uses <= 0) { const next = this.bank.shift(); this.held = next ? { item: next, uses: ITEMS[next].uses } : null; }
     } else {
       const r = this.local.use(me, now, x, z, yaw, [], y);
       if (!r) return;
       if (r.thunder) this.strike(r.thunder, me);
-      this.held = r.usesLeft > 0 ? { item, uses: r.usesLeft } : null;
+      this.held = this.local.held(me); this.bank = this.local.bank(me);
       if (r.hazard) { this.hazardSeen.set(r.hazard.id, now); this.hazards = this.local.hazards.slice(); this.syncPeels(); }
     }
     if (item === 'juice') this.onBoost?.();
@@ -244,7 +272,7 @@ export class Powerups {
     if (item === 'banana') this.onSay?.('Banana Slip dropped');
     if (item === 'bounce') this.onSay?.('Bounce Trap set');
     if (item === 'rocket') this.onSay?.('Rocket Pop!');
-    if (item === 'magnet') { this.onMagnet?.(); this.showMagnet('me'); this.onSay?.('Magnet!'); }
+    if (item === 'magnet') { this.myMagnetUntil = now + MAGNET_S * 1000; this.showMagnet('me'); this.onSay?.('Magnet! Boxes incoming'); }
     if (item === 'thunder') { this.onSay?.('Mini Thunder!'); if (!this.online) this.bolt(x + Math.sin(yaw) * 25, z + Math.cos(yaw) * 25); }
     if (item === 'star') this.onSay?.('Chaos Star!');
     this.slot();
@@ -256,7 +284,7 @@ export class Powerups {
   }
 
   private slot() {
-    this.onSlot?.(this.held?.item ?? null, this.held?.uses ?? 0, null);
+    this.onSlot?.(this.held?.item ?? null, this.held?.uses ?? 0, null, this.bank);
   }
 
   // ---------- each frame ----------
@@ -271,16 +299,36 @@ export class Powerups {
         this.slot();
       } else {
         const ids = Object.keys(ITEMS) as ItemId[];
-        this.onSlot?.(null, 0, ids[Math.floor(now / 90) % ids.length]);
+        this.onSlot?.(null, 0, ids[Math.floor(now / 90) % ids.length], this.bank);
       }
     }
-    // boxes bob and turn; broken ones shrink away and grow back
+    // a rival's Magnet reels in the boxes near them too (the server decides who gets what)
+    for (const [id, m] of this.magnets) {
+      if (id === 'me' || now > m.until) continue;
+      const root = this.racerRoot?.(id); if (!root) continue;
+      const rp = root.position;
+      for (const b of this.boxes) {
+        if (this.flights.has(b.id) || this.isHidden(b.id, now) || Math.abs(b.y - rp.y) > 5) continue;
+        if (Math.hypot(rp.x - b.x, rp.z - b.z) <= MAGNET_REACH) this.flights.set(b.id, { who: id, t0: now });
+      }
+    }
+    // boxes bob and turn; broken ones shrink away and grow back; pulled ones fly to the magnet
     const ease = Math.min(1, dt * 10);
     this.boxes.forEach((b, i) => {
+      const fl = this.flights.get(b.id);
+      const root = fl ? this.racerRoot?.(fl.who) : null;
+      if (fl && (!root || this.isHidden(b.id, now))) this.flights.delete(b.id);
       const target = this.isHidden(b.id, now) ? 0 : 1;
-      const sc = (this.boxScale[i] ?? 1) + (target - (this.boxScale[i] ?? 1)) * ease;
+      let sc = (this.boxScale[i] ?? 1) + (target - (this.boxScale[i] ?? 1)) * ease;
+      this.dummy.position.set(b.x, b.y + 1.3 + Math.sin(time * 2 + i) * 0.18, b.z);
+      if (fl && root && this.flights.has(b.id)) {
+        const k = Math.min(1, (now - fl.t0) / (PULL_S * 1000)), e = k * k;
+        this.dummy.position.lerp(this.tmp.set(root.position.x, root.position.y + 1.1, root.position.z), e);
+        sc = 1 - 0.55 * e;
+        if (Math.random() < 0.7) this.trail(this.dummy.position.x, this.dummy.position.z, this.dummy.position.y);
+        if (k >= 1 && fl.who !== 'me') { this.flights.delete(b.id); this.predictedHidden.set(b.id, now + 1500); sc = 0; }
+      }
       this.boxScale[i] = sc;
-      this.dummy.position.set(b.x, 1.3 + Math.sin(time * 2 + i) * 0.18, b.z);
       this.dummy.rotation.set(0.5, time * 1.4 + i, 0.3);
       this.dummy.scale.setScalar(Math.max(0.0001, sc));
       this.dummy.updateMatrix();
@@ -314,7 +362,11 @@ export class Powerups {
       if (now > m.until) { m.o.removeFromParent(); this.magnets.delete(id); continue; }
       const root = this.racerRoot?.(id);
       if (root && m.o.parent !== root) root.add(m.o);
-      m.o.position.y = 2.7 + Math.sin(time * 6) * 0.12; m.o.rotation.set(0, Math.sin(time * 4) * 0.35, Math.sin(time * 9) * 0.08);
+      const shoe = m.o.children[0], ring = m.o.children[1];
+      shoe.position.y = 2.7 + Math.sin(time * 6) * 0.12; shoe.rotation.set(0, Math.sin(time * 4) * 0.35, Math.sin(time * 9) * 0.08);
+      // a pulse ripples out from the kart: the pull reaching for boxes
+      const k = (time * 1.6) % 1; ring.scale.setScalar(1.5 + k * 9);
+      ((ring as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - k) * Math.min(1, (m.until - now) / 600);
     }
     // lightning bolts flash and fade
     for (const b of this.bolts) { b.t += dt; b.m.visible = Math.floor(b.t * 30) % 3 !== 2; b.m.scale.x = b.m.scale.z = Math.max(0.05, 1 - b.t * 2.5); }
@@ -399,7 +451,10 @@ export class Powerups {
   /** Magnet: a red horseshoe magnet spinning above the kart while it pulls. */
   private showMagnet(id: string) {
     this.magnets.get(id)?.o.removeFromParent();
-    this.magnets.set(id, { o: magnetModel(), until: this.now() + MAGNET_S * 1000 });
+    const o = new THREE.Group(), ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: 0x8f84d9, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.2;
+    o.add(magnetModel(), ring);
+    this.magnets.set(id, { o, until: this.now() + MAGNET_S * 1000 });
   }
 
   /** Mini Thunder: a jagged yellow-white bolt from the sky down to (x, z). */

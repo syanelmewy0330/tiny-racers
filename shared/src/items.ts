@@ -15,12 +15,16 @@ export const ITEMS: Record<ItemId, ItemInfo> = {
   banana: { id: 'banana', name: 'Banana Slip', uses: 1, blurb: 'Drops a banana peel that spins racers out.' },
   rocket: { id: 'rocket', name: 'Rocket Pop', uses: 1, blurb: 'A firework that flies along the track and spins out the first racer it reaches.' },
   bounce: { id: 'bounce', name: 'Bounce Trap', uses: 1, blurb: 'A springy pad that bounces racers into the air and slows them.' },
-  magnet: { id: 'magnet', name: 'Magnet', uses: 1, blurb: 'Pulls you along the road towards the racer ahead for 3 seconds.' },
+  magnet: { id: 'magnet', name: 'Magnet', uses: 1, blurb: 'For 6 seconds, nearby item boxes fly to you. Bank up to 3 items.' },
   thunder: { id: 'thunder', name: 'Mini Thunder', uses: 1, blurb: 'Lightning shrinks every racer ahead of you for a few seconds.' },
   star: { id: 'star', name: 'Chaos Star', uses: 1, blurb: 'A wild star zig-zags along the track and spins out anyone it touches, you too.' },
 };
 
-export const MAGNET_S = 3;
+/** Magnet: how long it pulls item boxes in, and from how far (metres). */
+export const MAGNET_S = 6;
+export const MAGNET_REACH = 25;
+/** While the Magnet pulls, extra items queue up behind the one in your slot (3 in all). */
+export const BANK_MAX = 2;
 export const SHRINK_S = 4;
 /** Chaos Star: how long it roams, how fast, and how close counts as touching. */
 export const STAR_LIFE_S = 10;
@@ -50,7 +54,7 @@ const MAX_HAZARDS = 16;
 /** The racer who dropped a banana peel can't hit it for this long (it's right under them). */
 export const OWNER_GRACE_MS = 1200;
 
-export interface ItemBox { id: number; x: number; z: number }
+export interface ItemBox { id: number; x: number; z: number; /** road height (raised roads) */ y: number }
 /**
  * Something an item put on the track. Banana peels and Bounce Traps sit still at x, z.
  * A Rocket Pop starts at path sample i0, `off` metres to the side of the centre line, and
@@ -81,7 +85,7 @@ export function itemBoxes(path: TrackPath, roadHalfWidth: number): ItemBox[] {
     const sx = Math.cos(yaw), sz = -Math.sin(yaw);   // sideways
     for (let k = 0; k < PER_ROW; k++) {
       const off = (k - (PER_ROW - 1) / 2) * (roadHalfWidth * 0.5);
-      out.push({ id: r * PER_ROW + k, x: p.x + sx * off, z: p.z + sz * off });
+      out.push({ id: r * PER_ROW + k, x: p.x + sx * off, z: p.z + sz * off, y: p.y ?? 0 });
     }
   });
   return out;
@@ -108,7 +112,7 @@ export function rollItem(place: number, of: number, rnd = Math.random): ItemId {
   return 'juice';
 }
 
-interface Holder { item: ItemId | null; uses: number; shieldUntil: number }
+interface Holder { item: ItemId | null; uses: number; shieldUntil: number; bank: ItemId[]; magnetUntil: number }
 
 export interface ThunderHit { id: string; blocked: boolean }
 export type UseResult = { item: ItemId; usesLeft: number; hazard?: Hazard; thunder?: ThunderHit[] } | null;
@@ -130,13 +134,17 @@ export class ItemWorld {
 
   private holder(id: string): Holder {
     let h = this.holders.get(id);
-    if (!h) { h = { item: null, uses: 0, shieldUntil: 0 }; this.holders.set(id, h); }
+    if (!h) { h = { item: null, uses: 0, shieldUntil: 0, bank: [], magnetUntil: 0 }; this.holders.set(id, h); }
     return h;
   }
 
   boxReady(box: number, now: number) { return (this.hiddenUntil.get(box) ?? 0) <= now; }
   hiddenBoxes(now: number) { return this.boxes.filter((b) => !this.boxReady(b.id, now)).map((b) => b.id); }
   held(player: string) { const h = this.holders.get(player); return h?.item ? { item: h.item, uses: h.uses } : null; }
+  /** Items queued behind the slot (from a Magnet). */
+  bank(player: string): ItemId[] { return [...(this.holders.get(player)?.bank ?? [])]; }
+  /** Is this racer's Magnet pulling boxes in? (a second of slack for online lag) */
+  magnetOn(player: string, now: number) { return (this.holders.get(player)?.magnetUntil ?? 0) + 1000 > now; }
   shielded(player: string, now: number) { return (this.holders.get(player)?.shieldUntil ?? 0) > now; }
 
   /** Tests only: put an item straight into a racer's slot. */
@@ -145,13 +153,25 @@ export class ItemWorld {
     const h = this.holder(player); h.item = item as ItemId; h.uses = ITEMS[item as ItemId].uses;
   }
 
-  /** Drive through a box. Returns the item rolled, or null (box gone, too far, or already holding one). */
-  pick(player: string, box: number, now: number, x: number, z: number, place: number, of: number): ItemId | null {
+  /**
+   * Drive through a box (or a Magnet pulled it in). Returns the item rolled, or null (box gone,
+   * too far, or already holding one). With a Magnet on, extra items go into the bank.
+   * `y` = ground height under the kart, so a box on a bridge can't be grabbed from below.
+   */
+  pick(player: string, box: number, now: number, x: number, z: number, place: number, of: number, y?: number): ItemId | null {
     const b = this.boxes[box];
-    if (!b || !this.boxReady(box, now) || Math.hypot(x - b.x, z - b.z) > BOX_REACH + 2.5) return null;
+    const h = this.holder(player), magnet = this.magnetOn(player, now);
+    const reach = magnet ? MAGNET_REACH + 8 : BOX_REACH + 2.5;
+    if (!b || !this.boxReady(box, now) || Math.hypot(x - b.x, z - b.z) > reach) return null;
+    if (y !== undefined && Math.abs(y - b.y) > 4) return null;
     this.hiddenUntil.set(box, now + BOX_RESPAWN_MS);
-    const h = this.holder(player);
-    if (h.item) return null;    // the box still breaks, but you keep what you have
+    if (h.item) {
+      // the box still breaks, but you keep what you have (unless a Magnet banks it)
+      if (!magnet || h.bank.length >= BANK_MAX) return null;
+      const extra = rollItem(place, of);
+      h.bank.push(extra);
+      return extra;
+    }
     h.item = rollItem(place, of);
     h.uses = ITEMS[h.item].uses;
     return h.item;
@@ -166,6 +186,7 @@ export class ItemWorld {
     const item = h.item;
     let hazard: Hazard | undefined;
     if (item === 'shield') h.shieldUntil = now + SHIELD_MS;
+    if (item === 'magnet') h.magnetUntil = now + MAGNET_S * 1000;
     if (item === 'banana' || item === 'bounce') {
       hazard = { id: this.nextId++, kind: item, x: x - Math.sin(yaw) * 2.6, z: z - Math.cos(yaw) * 2.6, y: Math.max(0, y), owner: player, at: now };
     }
@@ -193,8 +214,13 @@ export class ItemWorld {
       if (this.hazards.length > MAX_HAZARDS && old >= 0) this.hazards.splice(old, 1);
     }
     h.uses -= 1;
-    if (h.uses <= 0) { h.item = null; h.uses = 0; }
-    return { item, usesLeft: h.uses, hazard, thunder };
+    const left = Math.max(0, h.uses);
+    if (h.uses <= 0) {
+      // the next banked item moves into the slot
+      const next = h.bank.shift();
+      h.item = next ?? null; h.uses = next ? ITEMS[next].uses : 0;
+    }
+    return { item, usesLeft: left, hazard, thunder };
   }
 
   /** A racer drove into a hazard. A shield pops instead of spinning out. */

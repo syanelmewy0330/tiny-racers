@@ -20,7 +20,7 @@ import type { ColyseusSession } from '../net/ColyseusSession';
 import { RemoteKarts } from './RemoteKarts';
 import { Look } from './Look';
 import { Powerups, ITEM_ICONS } from './Powerups';
-import { ITEMS, MAGNET_S, SHRINK_S } from '@shared/items';
+import { ITEMS, SHRINK_S } from '@shared/items';
 import { Obstacles } from './Obstacles';
 import { LAPS } from '@shared/constants';
 import { sfx } from '../audio/Sfx';
@@ -66,7 +66,6 @@ export class Game {
   readonly hud: Hud;
   private look!: Look;
   private items: Powerups;
-  private magnetHint = 0;
   private obstacles!: Obstacles;
   /** The track picked for practice races (remembered). */
   private practiceTrack = savedTrack().id;
@@ -90,9 +89,10 @@ export class Game {
     this.remotes = new RemoteKarts(this.scene, this.world);
     this.race = new RaceTracker(this.track.route);
     this.items = new Powerups(this.scene, this.track.path, this.track.def.roadHalfWidth);
-    this.items.onSlot = (item, uses, rolling) => {
+    this.items.onSlot = (item, uses, rolling, bank) => {
       if (rolling) this.hud.setItemRolling(ITEM_ICONS[rolling]);
       else this.hud.setItem(item ? ITEMS[item].name : null, item ? ITEM_ICONS[item] : '', uses);
+      this.hud.setBank(bank.map((b) => ITEM_ICONS[b]));
     };
     this.items.onSay = (t) => this.hud.say(t, 1.2);
     this.items.onBoost = () => this.kart.boost(1.0, 'item');
@@ -101,7 +101,6 @@ export class Game {
     this.items.spinRacer = (id) => this.remotes.model(id)?.spin(1.1);
     this.items.onBounce = () => { this.kart.bounce(); this.model.react(); };
     this.items.hopRacer = (id) => this.remotes.model(id)?.hop();
-    this.items.onMagnet = () => this.kart.magnet(MAGNET_S);
     this.items.onShrink = () => { this.kart.shrink(SHRINK_S); this.model.shrink(SHRINK_S); };
     this.items.shrinkRacer = (id) => this.remotes.model(id)?.shrink(SHRINK_S);
     this.items.onFlash = () => this.hud.flash?.();
@@ -332,12 +331,6 @@ export class Game {
       const gy = p.y - KART_RADIUS;
       this.items.step(me, p.x, p.z, place, of, gy);
       if (useItem) this.items.use(me, p.x, p.z, this.kart.yaw, gy);
-    }
-    // Magnet: steer along the road towards whoever is ahead, at extra speed
-    if (this.kart.magnetTime > 0) {
-      const path = this.track.path, N = path.pts.length;
-      this.magnetHint = this.race.index;
-      this.kart.magnetTarget = path.pts[(this.magnetHint + 14) % N];
     }
     this.kart.applyInput(input, STEP, locked);
     const was = this.kart.body.translation();

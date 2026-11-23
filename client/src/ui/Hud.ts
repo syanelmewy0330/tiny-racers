@@ -87,6 +87,7 @@ export class Hud {
         <div class="pad">Controller: stick steers, RT go, LT brake, RB drift, LB item, Y reset, Start pause</div>
       </div>
       <div class="rh-item empty" data-item><svg viewBox="0 0 100 100" data-icon aria-hidden="true"></svg><div class="key">E</div></div>
+      <div class="rh-bank" data-bank></div>
       <div class="rh-item-label" data-ilabel><span class="cap">NO ITEM</span></div>
       <div class="rh-hint" data-hint><b class="kc">H</b> CONTROLS</div>
       <div class="rh-speedo" data-speedo>
@@ -115,7 +116,7 @@ export class Hud {
     this.results = el(`<div class="rr" hidden><div class="rr-card" data-rcard></div></div>`);
     this.pauseEl = el(`<div class="rr rp" hidden role="dialog" aria-label="Paused"><div class="rr-card" data-pcard></div></div>`);
     parent.append(this.root, this.results, this.pauseEl);
-    for (const k of ['place', 'pn', 'pof', 'pbadge', 'lap', 'time', 'net', 'standings', 'help', 'hint', 'speedo', 'speed', 'boost', 'banner', 'btext', 'toast', 'big', 'finish', 'fplace', 'confetti', 'lines', 'item', 'ilabel'])
+    for (const k of ['place', 'pn', 'pof', 'pbadge', 'lap', 'time', 'net', 'standings', 'help', 'hint', 'speedo', 'speed', 'boost', 'banner', 'btext', 'toast', 'big', 'finish', 'fplace', 'confetti', 'lines', 'item', 'ilabel', 'bank'])
       this.els[k] = this.q(`[data-${k}]`);
     this.speedArc = this.root.querySelector('[data-arc]') as unknown as SVGPathElement;
     this.glowArc = this.root.querySelector('[data-glow]') as unknown as SVGPathElement;
@@ -359,6 +360,14 @@ export class Hud {
     this.els.ilabel.innerHTML = name ? `${name}${uses > 1 ? ` <b class="uses">×${uses}</b>` : ''}<span class="cap">PRESS E</span>` : '<span class="cap">NO ITEM</span>';
     it.dataset.held = name ?? '';
     if (name && name !== was) { it.classList.remove('got'); void it.offsetWidth; it.classList.add('got'); }
+  }
+
+  /** Items a Magnet banked: small icons stacked above the slot, next one first. */
+  setBank(icons: string[]) {
+    const key = icons.join('|');
+    if (this.els.bank.dataset.k === key) return;
+    this.els.bank.dataset.k = key;
+    this.els.bank.innerHTML = icons.map((svg, i) => `<div class="b${i === 0 ? ' next' : ''}"><svg viewBox="0 0 100 100" aria-hidden="true">${svg}</svg></div>`).join('');
   }
 
   /** A quick white-yellow flash over the screen (struck by Mini Thunder). */

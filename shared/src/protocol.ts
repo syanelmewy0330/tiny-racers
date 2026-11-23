@@ -38,7 +38,7 @@ export interface WorldMessage {
 }
 
 /** Server to the racer who drove through a box. */
-export interface ItemGotMessage { item: ItemId; uses: number }
+export interface ItemGotMessage { item: ItemId; uses: number; /** true when it went into the Magnet bank, not the slot */ banked?: boolean; bank?: ItemId[] }
 /** Server to everyone when a racer uses an item. */
 export interface ItemUsedMessage { id: string; item: ItemId; usesLeft: number; hazard?: Hazard; thunder?: ThunderHit[] }
 /** Server to everyone when a racer hits a banana peel (blocked = their shield took it). */

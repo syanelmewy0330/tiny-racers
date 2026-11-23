@@ -260,8 +260,11 @@ export class RaceRoom extends Room {
     const p = this.players.get(client.sessionId);
     if (!this.racing(p) || typeof box !== 'number') return;
     const order = this.ranking();
-    const item = this.items.pick(p.id, box, this.clock.currentTime, p.snap.x, p.snap.z, order.indexOf(p) + 1, order.length);
-    if (item) client.send('item:got', { item, uses: this.items.held(p.id)?.uses ?? 1 } satisfies ItemGotMessage);
+    const before = this.items.bank(p.id).length;
+    const item = this.items.pick(p.id, box, this.clock.currentTime, p.snap.x, p.snap.z, order.indexOf(p) + 1, order.length, p.snap.y - 0.75);
+    if (!item) return;
+    const bank = this.items.bank(p.id), banked = bank.length > before;
+    client.send('item:got', { item, uses: banked ? 1 : this.items.held(p.id)?.uses ?? 1, banked, bank } satisfies ItemGotMessage);
   }
 
   private onUse(client: Client) {
