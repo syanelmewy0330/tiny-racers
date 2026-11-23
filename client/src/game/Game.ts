@@ -344,12 +344,15 @@ export class Game {
     this.prevPos = { x: was.x, y: was.y, z: was.z }; this.prevYaw = this.kart.yaw;
     const before = Math.hypot(this.kart.vx, this.kart.vz);
     this.world.step();
-    this.obstacles.ground = this.track.heightAt(this.race.index);
+    const k = this.kart.body.translation(), under = this.track.groundAt(this.race.index, k.x, k.z);
+    this.obstacles.ground = under.y;
     this.obstacles.step(this.kart.body, this.kart.yaw, STEP);
-    this.stickToRaisedRoad();
+    this.stickToRaisedRoad(under);
     this.kart.syncFromPhysics();
     this.bumpCheck(before);
-    if (this.kart.body.translation().y < -5) this.respawn();
+    // fell off the world, or off the side of a raised road
+    const y = this.kart.body.translation().y;
+    if (y < -5 || (this.mode === 'race' && y < under.y - 6)) this.respawn();
   }
 
   /**
@@ -357,16 +360,14 @@ export class Game {
    * it into little hops: set its height to the road and its vertical speed to follow the slope.
    * Leaves it alone when it is clearly in the air (a bounce trap, or a jump).
    */
-  private stickToRaisedRoad() {
-    const path = this.track.path, P = path.pts, N = P.length, i = this.race.index;
-    const a = P[i], b = P[(i + 1) % N], c = P[(i - 1 + N) % N];
-    if (a.y < 0.02 && b.y < 0.02 && c.y < 0.02) return;
+  private stickToRaisedRoad(g: ReturnType<Track['groundAt']>) {
+    if (g.ay < 0.02 && g.by < 0.02 && g.cy < 0.02) return;
     const k = this.kart.body.translation(), v = this.kart.body.linvel();
-    const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz) || 1;
-    // road height right under the kart, between the two nearest samples
-    const f = ((k.x - a.x) * dx + (k.z - a.z) * dz) / (len * len);
-    const road = f >= 0 ? a.y + (b.y - a.y) * Math.min(1, f) : a.y + (a.y - c.y) * Math.max(-1, f);
-    const along = (v.x * dx + v.z * dz) / len, slopeVy = along * (b.y - a.y) / len;
+    const dx = g.bx - g.ax, dz = g.bz - g.az, len = Math.hypot(dx, dz) || 1;
+    // road height right under the kart, between the two nearest samples (main road or shortcut)
+    const f = ((k.x - g.ax) * dx + (k.z - g.az) * dz) / (len * len);
+    const road = f >= 0 ? g.ay + (g.by - g.ay) * Math.min(1, f) : g.ay + (g.ay - g.cy) * Math.max(-1, f);
+    const along = (v.x * dx + v.z * dz) / len, slopeVy = along * (g.by - g.ay) / len;
     const gap = k.y - KART_RADIUS - road;
     if (gap < -0.6 || gap > 0.9 || v.y > slopeVy + 3) return;
     // a hair above the surface, so the next step glides along it instead of digging in and losing speed

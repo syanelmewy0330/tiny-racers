@@ -22,5 +22,5 @@ export const FROSTBITE_PASS: TrackDef = {
   icePatches: [{ t: 0.39, len: 22, side: 0 }, { t: 0.77, len: 24, side: 1 }],
   tunnel: { from: 0.565, to: 0.625 },
   // across the frozen pond inside the hairpin: shorter, but all ice
-  shortcut: { from: 0.3, to: 0.45, via: [[120, -41], [152, -39]], halfWidth: 4.5 },
+  shortcuts: [{ from: 0.3, to: 0.45, via: [[120, -41], [152, -39]], halfWidth: 4.5, kind: 'ice' }],
 };

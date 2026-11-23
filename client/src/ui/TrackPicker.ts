@@ -8,6 +8,7 @@ const LOOKS: Record<string, { bg: string; line: string; tag: string }> = {
   'frostbite-pass': { bg: 'linear-gradient(160deg,#5b6aa8,#25305a)', line: '#CFE6FF', tag: 'Snow & ice' },
   'lantern-grove': { bg: 'linear-gradient(160deg,#2f4a3c,#141b30)', line: '#FCC945', tag: 'Moonlit forest' },
   'neon-harbor': { bg: 'linear-gradient(160deg,#3a2f6b,#15132a)', line: '#8F84D9', tag: 'Rainy neon night' },
+  'dragon-ridge': { bg: 'linear-gradient(160deg,#c9725a,#2b2550)', line: '#FCC945', tag: 'Misty sunrise' },
 };
 
 /** Small top-down outline of a track, as an SVG string. */
@@ -20,9 +21,9 @@ export function trackOutline(def: TrackDef, stroke: string): string {
   const P = (x: number, z: number) => `${(ox + (x - minX) * s).toFixed(1)},${(oz + (z - minZ) * s).toFixed(1)}`;
   const d = 'M' + pts.map((p) => P(p.x, p.z)).join(' L') + ' Z';
   let extra = '';
-  if (def.shortcut) {
-    const n = pts.length, a = pts[Math.floor(def.shortcut.from * n)], b = pts[Math.floor(def.shortcut.to * n)];
-    extra = `<path d="M${P(a.x, a.z)} ${def.shortcut.via.map(([x, z]) => 'L' + P(x, z)).join(' ')} L${P(b.x, b.z)}" stroke="${stroke}" stroke-width="3" stroke-dasharray="4 4" fill="none" opacity=".8"/>`;
+  for (const sc of def.shortcuts ?? []) {
+    const n = pts.length, a = pts[Math.floor(sc.from * n)], b = pts[Math.floor(sc.to * n)];
+    extra += `<path d="M${P(a.x, a.z)} ${sc.via.map(([x, z]) => 'L' + P(x, z)).join(' ')} L${P(b.x, b.z)}" stroke="${stroke}" stroke-width="3" stroke-dasharray="4 4" fill="none" opacity=".8"/>`;
   }
   const st = pts[0];
   return `<svg viewBox="0 0 200 120" aria-hidden="true"><path d="${d}" stroke="rgba(0,0,0,.35)" stroke-width="10" fill="none" stroke-linejoin="round"/><path d="${d}" stroke="${stroke}" stroke-width="5" fill="none" stroke-linejoin="round"/>${extra}<circle cx="${P(st.x, st.z).split(',')[0]}" cy="${P(st.x, st.z).split(',')[1]}" r="5" fill="#fff" stroke="#1C1F26" stroke-width="2"/></svg>`;
