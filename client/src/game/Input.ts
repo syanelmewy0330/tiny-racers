@@ -3,6 +3,8 @@ import type { ControlInput } from '@shared/types';
 /** Buttons on a standard gamepad (Xbox / PlayStation layout in the browser). */
 const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
 
+export type PadKind = 'ps' | 'xbox';
+
 export type MenuKey = 'up' | 'down' | 'left' | 'right' | 'ok' | 'back';
 
 /** A controller with its buttons put into the standard order, whatever the browser reported. */
@@ -65,6 +67,9 @@ export class Input {
   /** The controller that was used last (Windows can list several, some of them fake). */
   private activeIndex = -1;
   private current: Pad | null = null;
+  private helpQueued = false;
+  /** What kind of controller is in use, for the on-screen button hints. */
+  padKind: PadKind | null = null;
   private wasConnected = false;
   /** Called when a controller is plugged in or unplugged. */
   onPad?: (connected: boolean) => void;
@@ -104,10 +109,12 @@ export class Input {
     const raw = this.findPad();
     if (!!raw !== this.wasConnected) { this.wasConnected = !!raw; this.onPad?.(!!raw); }
     const p = (this.current = raw ? normalise(raw) : null);
+    this.padKind = raw ? (isPlayStation(raw.id) ? 'ps' : 'xbox') : null;
     if (!p) { this.padPrev = []; this.stickPrev = { x: 0, y: 0 }; return; }
     const pressed = (i: number) => !!p.buttons[i]?.pressed;
     const edge = (i: number) => pressed(i) && !this.padPrev[i];
     if (edge(PAD.START)) this.pauseQueued = true;
+    if (edge(PAD.BACK)) this.helpQueued = true;
     if (edge(PAD.Y)) this.respawnQueued = true;
     if (edge(PAD.LB)) this.itemQueued = true;
     if (edge(PAD.UP)) this.menuQueue.push('up');
@@ -166,6 +173,9 @@ export class Input {
     this.pauseQueued = false;
     return r;
   }
+
+  /** True once per press of the controller's Share / View button (controls guide). */
+  takeHelp(): boolean { const r = this.helpQueued; this.helpQueued = false; return r; }
 
   /** Gamepad menu presses since the last call. */
   takeMenu(): MenuKey[] { const q = this.menuQueue; this.menuQueue = []; return q; }

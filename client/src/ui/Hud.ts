@@ -1,5 +1,6 @@
 import { padFocus } from './padNav';
-import type { MenuKey } from '../game/Input';
+import type { MenuKey, PadKind } from '../game/Input';
+import { padLegend, padGlyph } from './padNav';
 import { sfx } from '../audio/Sfx';
 import { LAPS } from '@shared/constants';
 import { formatTime } from '../game/RaceTracker';
@@ -78,15 +79,17 @@ export class Hud {
       <div class="rh-map"><svg data-map aria-hidden="true"></svg></div>
       <div class="rh-help" data-help>
         <div class="t">CONTROLS</div>
-        <span><b class="kc">W</b> <b class="kc">↑</b></span><span>Accelerate</span>
-        <span><b class="kc">S</b> <b class="kc">↓</b></span><span>Brake / reverse</span>
-        <span><b class="kc">A</b> <b class="kc">D</b></span><span>Steer</span>
-        <span><b class="kc">Space</b></span><span>Drift, release to boost</span>
-        <span><b class="kc">E</b></span><span>Use item</span>
-        <span><b class="kc">R</b></span><span>Back on track</span>
-        <span><b class="kc">Esc</b></span><span>Pause menu</span>
-        <span><b class="kc">H</b></span><span>Hide controls</span>
-        <div class="pad">Controller: stick steers, R2/RT go, L2/LT brake, R1/RB drift, L1/LB item, Triangle/Y reset, Options/Start pause</div>
+        <div class="rh-keys" data-keys>
+          <span><b class="kc">W</b> <b class="kc">↑</b></span><span>Accelerate</span>
+          <span><b class="kc">S</b> <b class="kc">↓</b></span><span>Brake / reverse</span>
+          <span><b class="kc">A</b> <b class="kc">D</b></span><span>Steer</span>
+          <span><b class="kc">Space</b></span><span>Drift, release to boost</span>
+          <span><b class="kc">E</b></span><span>Use item</span>
+          <span><b class="kc">R</b></span><span>Back on track</span>
+          <span><b class="kc">Esc</b></span><span>Pause menu</span>
+          <span><b class="kc">H</b></span><span>Hide controls</span>
+        </div>
+        <div class="rh-keys" data-padkeys hidden></div>
       </div>
       <div class="rh-item empty" data-item><svg viewBox="0 0 100 100" data-icon aria-hidden="true"></svg><div class="key">E</div></div>
       <div class="rh-bank" data-bank></div>
@@ -139,6 +142,15 @@ export class Hud {
       if (e.code !== 'KeyH' || this.root.hidden || (e.target as HTMLElement)?.tagName === 'INPUT') return;
       this.toggleHelp();
     });
+  }
+
+  /** Swap the controls guide and button hints between keyboard and a PlayStation / Xbox controller. */
+  setPad(kind: PadKind | null) {
+    const keys = this.root.querySelector('[data-keys]') as HTMLElement, pad = this.root.querySelector('[data-padkeys]') as HTMLElement;
+    keys.hidden = !!kind; pad.hidden = !kind;
+    if (kind) pad.innerHTML = padLegend(kind).map(([k, what]) => `<span>${k}</span><span>${what}</span>`).join('');
+    (this.root.querySelector('[data-item] .key') as HTMLElement).innerHTML = kind ? padGlyph(kind, 'item') : 'E';
+    this.els.hint.innerHTML = kind ? `${padGlyph(kind, 'help')} CONTROLS` : '<b class="kc">H</b> CONTROLS';
   }
 
   /** Show or hide the controls guide, and remember the choice. */

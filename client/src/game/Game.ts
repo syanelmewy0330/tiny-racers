@@ -1,4 +1,6 @@
 import { padNav } from '../ui/padNav';
+import { setTitlePad } from '../ui/TitleScreen';
+import type { PadKind } from './Input';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { PHYSICS_HZ } from '@shared/constants';
@@ -49,6 +51,7 @@ export class Game {
   private prevPos = { x: 0, y: 0, z: 0 }; private prevYaw = 0;
   private time = 0;
   private mode: 'title' | 'race' = 'title';
+  private shownPad: PadKind | null = null;
   private remotes: RemoteKarts;
   private online: ColyseusSession | null = null;
   private meView: PlayerView | null = null;
@@ -415,6 +418,8 @@ export class Game {
     this.time += dt;
     // pause menu: Esc / P / Start; gamepad moves through menus
     this.input.poll();
+    if (this.input.padKind !== this.shownPad) { this.shownPad = this.input.padKind; this.hud.setPad(this.shownPad); setTitlePad(this.shownPad); }
+    if (this.input.takeHelp() && this.mode === 'race' && !this.hud.paused) this.hud.toggleHelp();
     if (this.input.takePause() && this.mode === 'race') { if (this.hud.paused) this.hud.closePause(); else this.openPause(); }
     for (const k of this.input.takeMenu()) {
       if (this.hud.menuKey(k)) continue;

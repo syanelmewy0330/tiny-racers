@@ -3,6 +3,18 @@ import { SERVERS, serverForCode, measurePing, type RaceServer } from '../net/ser
 import { characterCards, savedCharacter, saveCharacter } from './CharacterPicker';
 import { trackCards } from './TrackPicker';
 import { savedTrack, saveTrack } from '../game/theme';
+import { padLegendLine } from './padNav';
+import type { PadKind } from '../game/Input';
+
+let padNow: PadKind | null = null;
+/** Show the controller's buttons on the title screen (or how to wake one up). */
+export function setTitlePad(kind: PadKind | null) {
+  padNow = kind;
+  const el = document.querySelector('[data-padline]');
+  if (el) el.innerHTML = kind
+    ? `<span class="pad-tag">${kind === 'ps' ? 'PlayStation controller' : 'Controller'} connected</span>${padLegendLine(kind)}<span>d-pad + ${kind === 'ps' ? '<b class="pb cross">✕</b>' : '<b class="pb xa">A</b>'} in menus</span>`
+    : '<span>Got a PlayStation or Xbox controller? Plug it in and press any button.</span>';
+}
 
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } },
@@ -52,10 +64,11 @@ export function showTitle(parent: HTMLElement, h: { onPractice: (character: stri
         <span><kbd>E</kbd> use item</span>
         <span><kbd>R</kbd> reset kart</span>
         <span><kbd>Esc</kbd> pause</span>
-        <span>PlayStation and Xbox controllers work too: press any button to wake it up, then use the d-pad and Cross / A in menus</span>
       </div>
+      <div class="keys pad-keys" data-padline></div>
     </div>`;
   parent.append(screen);
+  setTitlePad(padNow);
   const q = <T extends HTMLElement>(s: string) => screen.querySelector(s) as T;
   const msg = q<HTMLElement>('[data-msg]'); msg.textContent = message;
   const name = q<HTMLInputElement>('[data-name]'), code = q<HTMLInputElement>('[data-code]'), server = q<HTMLInputElement>('[data-server]');

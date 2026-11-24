@@ -322,3 +322,13 @@ details[open] { display: flex; flex-direction: column; gap: 6px; }
 
 /* controller navigation: a clear orange ring on whatever the d-pad / stick has selected */
 body.pad-nav button:focus, body.pad-nav summary:focus { outline: 3px solid #FF8A00; outline-offset: 3px; }
+/* controller button badges (controls guide, title screen, item slot) */
+.pb { display: inline-block; font-family: var(--body); font-weight: 800; font-size: .78em; line-height: 1.5; min-width: 1.6em; text-align: center; padding: 0 .45em; border-radius: .5em; background: #F2F2F0; color: #1C1F26; }
+.pb.cross { background: #6CA9E6; color: #fff; } .pb.circle { background: #E54B4B; color: #fff; }
+.pb.square { background: #8F84D9; color: #fff; } .pb.triangle { background: #7AA58A; color: #fff; }
+.pb.xa { background: #7AA58A; color: #fff; } .pb.xb { background: #E54B4B; color: #fff; }
+.pb.xx { background: #6CA9E6; color: #fff; } .pb.xy { background: #FCC945; }
+.rh-keys { display: contents; }
+.rh-keys[hidden] { display: none; }
+.pad-keys { margin-top: 6px; }
+.pad-tag { color: #FF8A00; }

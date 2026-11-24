@@ -1,4 +1,33 @@
-import type { MenuKey } from '../game/Input';
+import type { MenuKey, PadKind } from '../game/Input';
+
+/** One controller button drawn as a little badge (PlayStation shapes in their colours, or Xbox letters). */
+const B = (t: string, cls = '') => `<b class="pb ${cls}">${t}</b>`;
+const PS = { cross: B('✕', 'cross'), circle: B('○', 'circle'), square: B('□', 'square'), triangle: B('△', 'triangle') };
+
+export function padGlyph(kind: PadKind, what: 'item' | 'help'): string {
+  if (what === 'item') return kind === 'ps' ? B('L1') : B('LB');
+  return kind === 'ps' ? B('SHARE') : B('VIEW');
+}
+
+/** The controls guide rows for a controller: [buttons html, what it does]. */
+export function padLegend(kind: PadKind): [string, string][] {
+  const ps = kind === 'ps';
+  return [
+    [B('L-STICK') + ' ' + B('D-PAD'), 'Steer'],
+    [ps ? B('R2') + ' ' + PS.cross : B('RT') + ' ' + B('A', 'xa'), 'Accelerate'],
+    [ps ? B('L2') + ' ' + PS.circle : B('LT') + ' ' + B('B', 'xb'), 'Brake / reverse'],
+    [ps ? B('R1') + ' ' + PS.square : B('RB') + ' ' + B('X', 'xx'), 'Drift, release to boost'],
+    [ps ? B('L1') : B('LB'), 'Use item'],
+    [ps ? PS.triangle : B('Y', 'xy'), 'Back on track'],
+    [ps ? B('OPTIONS') : B('MENU'), 'Pause menu'],
+    [padGlyph(kind, 'help'), 'Hide controls'],
+  ];
+}
+
+/** Short one-line version for the title screen. */
+export function padLegendLine(kind: PadKind): string {
+  return padLegend(kind).slice(0, 7).map(([k, w]) => `<span>${k} ${w.split(',')[0].toLowerCase()}</span>`).join('');
+}
 
 /** Focus an element so the controller's highlight shows, even after mouse use. */
 export function padFocus(el: HTMLElement) {
