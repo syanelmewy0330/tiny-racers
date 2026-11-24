@@ -52,7 +52,7 @@ export function showTitle(parent: HTMLElement, h: { onPractice: (character: stri
         <span><kbd>E</kbd> use item</span>
         <span><kbd>R</kbd> reset kart</span>
         <span><kbd>Esc</kbd> pause</span>
-        <span>Controllers work too</span>
+        <span>PlayStation and Xbox controllers work too: press any button to wake it up, then use the d-pad and Cross / A in menus</span>
       </div>
     </div>`;
   parent.append(screen);

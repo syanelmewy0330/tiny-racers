@@ -1,3 +1,4 @@
+import { padNav } from '../ui/padNav';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { PHYSICS_HZ } from '@shared/constants';
@@ -415,7 +416,11 @@ export class Game {
     // pause menu: Esc / P / Start; gamepad moves through menus
     this.input.poll();
     if (this.input.takePause() && this.mode === 'race') { if (this.hud.paused) this.hud.closePause(); else this.openPause(); }
-    for (const k of this.input.takeMenu()) if (!this.hud.menuKey(k) && k === 'back' && this.hud.paused) this.hud.closePause();
+    for (const k of this.input.takeMenu()) {
+      if (this.hud.menuKey(k)) continue;
+      if (k === 'back' && this.hud.paused) this.hud.closePause();
+      else if (this.mode === 'title') padNav(k);   // title, character / track pick and lobby screens
+    }
     // practice freezes while paused; online races carry on
     const frozen = this.hud.paused && !this.online;
     if (frozen) this.acc = 0; else this.acc += dt;

@@ -319,3 +319,6 @@ details[open] { display: flex; flex-direction: column; gap: 6px; }
 .track-card .blurb { font-size: .8rem; color: var(--text-dim); }
 .tracks.compact .track-card .blurb { display: none; }
 .tracks.compact .track-card b { font-size: 1rem; }
+
+/* controller navigation: a clear orange ring on whatever the d-pad / stick has selected */
+body.pad-nav button:focus, body.pad-nav summary:focus { outline: 3px solid #FF8A00; outline-offset: 3px; }

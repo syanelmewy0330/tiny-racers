@@ -1,3 +1,5 @@
+import { padFocus } from './padNav';
+import type { MenuKey } from '../game/Input';
 import { sfx } from '../audio/Sfx';
 import { LAPS } from '@shared/constants';
 import { formatTime } from '../game/RaceTracker';
@@ -84,7 +86,7 @@ export class Hud {
         <span><b class="kc">R</b></span><span>Back on track</span>
         <span><b class="kc">Esc</b></span><span>Pause menu</span>
         <span><b class="kc">H</b></span><span>Hide controls</span>
-        <div class="pad">Controller: stick steers, RT go, LT brake, RB drift, LB item, Y reset, Start pause</div>
+        <div class="pad">Controller: stick steers, R2/RT go, L2/LT brake, R1/RB drift, L1/LB item, Triangle/Y reset, Options/Start pause</div>
       </div>
       <div class="rh-item empty" data-item><svg viewBox="0 0 100 100" data-icon aria-hidden="true"></svg><div class="key">E</div></div>
       <div class="rh-bank" data-bank></div>
@@ -177,7 +179,7 @@ export class Hud {
   closePause() { this.pauseEl.hidden = true; }
 
   /** Gamepad / arrow navigation for whichever menu is open (pause or results). */
-  menuKey(k: 'up' | 'down' | 'ok' | 'back') {
+  menuKey(k: MenuKey) {
     const box = !this.pauseEl.hidden ? this.pauseEl : !this.results.hidden ? this.results : null;
     if (!box) return false;
     const btns = [...box.querySelectorAll('button')] as HTMLButtonElement[];
@@ -185,8 +187,8 @@ export class Hud {
     let i = btns.indexOf(document.activeElement as HTMLButtonElement);
     if (k === 'ok') { (btns[i] ?? btns[0]).click(); return true; }
     if (k === 'back') return false;
-    i = i < 0 ? 0 : (i + (k === 'down' ? 1 : -1) + btns.length) % btns.length;
-    btns[i].focus();
+    i = i < 0 ? 0 : (i + (k === 'down' || k === 'right' ? 1 : -1) + btns.length) % btns.length;
+    padFocus(btns[i]);
     return true;
   }
 
